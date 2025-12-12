@@ -1,0 +1,7 @@
+project_id = "jkgmductfqkbblnrhvsj"
+
+[functions.execute-workflow]
+verify_jwt = true
+
+[functions.webhook-trigger]
+verify_jwt = false
