@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { Zap, Plus, Play, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Zap, Plus, Play, Clock, CheckCircle, XCircle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -50,9 +50,18 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold">Welcome back!</h1>
             <p className="text-muted-foreground mt-1">Here's what's happening with your workflows</p>
           </div>
-          <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
-            <Plus className="mr-2 h-4 w-4" /> New Workflow
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/workflows')}
+              className="hover:bg-accent hover:text-accent-foreground"
+            >
+              <FolderOpen className="mr-2 h-4 w-4" /> View Workflows
+            </Button>
+            <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
+              <Plus className="mr-2 h-4 w-4" /> New Workflow
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -85,9 +94,18 @@ export default function Dashboard() {
             <p className="text-muted-foreground text-center max-w-md mb-6">
               Create your first workflow to start automating your tasks with AI-powered intelligence.
             </p>
-            <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
-              <Plus className="mr-2 h-4 w-4" /> Create Your First Workflow
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/workflows')}
+                className="hover:bg-accent hover:text-accent-foreground"
+              >
+                <FolderOpen className="mr-2 h-4 w-4" /> View All Workflows
+              </Button>
+              <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
+                <Plus className="mr-2 h-4 w-4" /> Create Your First Workflow
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </main>
