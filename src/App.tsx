@@ -1,8 +1,9 @@
+import Chatbot from "@/components/ui/Chatbot";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import Index from "./pages/Index";
 import SignUp from "./pages/SignUp";
@@ -15,6 +16,16 @@ import WorkflowBuilder from "./pages/WorkflowBuilder";
 import Executions from "./pages/Executions";
 import ExecutionDetail from "./pages/ExecutionDetail";
 import NotFound from "./pages/NotFound";
+
+// Component to conditionally render Chatbot only on landing page
+const ConditionalChatbot = () => {
+  const location = useLocation();
+  
+  // Only show chatbot on the landing page (pre-login pages)
+  const showChatbot = location.pathname === "/";
+  
+  return showChatbot ? <Chatbot /> : null;
+};
 
 const queryClient = new QueryClient();
 
@@ -38,6 +49,7 @@ const App = () => (
             <Route path="/execution/:id" element={<ExecutionDetail />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <ConditionalChatbot />
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>
