@@ -20,6 +20,7 @@ interface Execution {
   error: string | null;
   logs: Json | null;
   output: Json | null;
+  input?: Json | null;
 }
 
 interface ExecutionConsoleProps {
@@ -40,7 +41,7 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
     try {
       const { data, error } = await supabase
         .from('executions')
-        .select('id, status, started_at, finished_at, duration_ms, error, logs, output')
+        .select('id, status, started_at, finished_at, duration_ms, error, logs, output, input')
         .eq('workflow_id', workflowId)
         .order('started_at', { ascending: false })
         .limit(10);
@@ -83,13 +84,19 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
           if (payload.eventType === 'INSERT') {
             const newExecution = payload.new as Execution;
             setExecutions(prev => [newExecution, ...prev.slice(0, 9)]);
+            // Auto-select the new execution
             setSelectedExecution(newExecution);
+            // Auto-expand console if collapsed (triggered from parent)
           } else if (payload.eventType === 'UPDATE') {
             const updatedExecution = payload.new as Execution;
             setExecutions(prev => 
               prev.map(exec => exec.id === updatedExecution.id ? updatedExecution : exec)
             );
+            // Always update selected execution if it's the one being updated
             if (selectedExecution?.id === updatedExecution.id) {
+              setSelectedExecution(updatedExecution);
+            } else if (!selectedExecution || updatedExecution.started_at > selectedExecution.started_at) {
+              // Auto-select if it's newer than current selection
               setSelectedExecution(updatedExecution);
             }
           }
@@ -129,15 +136,57 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
   const formatLogs = (logs: Json | null): string => {
     if (!logs) return 'No logs available';
     if (Array.isArray(logs)) {
-      return logs.map((log, i) => `[${i + 1}] ${typeof log === 'object' ? JSON.stringify(log, null, 2) : log}`).join('\n');
+      return logs.map((log: any, i: number) => {
+        if (typeof log === 'object' && log !== null) {
+          const nodeName = log.nodeName || log.nodeId || `Node ${i + 1}`;
+          const status = log.status || 'unknown';
+          const statusIcon = status === 'success' ? '✓' : status === 'failed' ? '✗' : status === 'running' ? '⟳' : '○';
+          
+          let logText = `\n${'='.repeat(60)}\n`;
+          logText += `${statusIcon} [${i + 1}] ${nodeName} (${status})\n`;
+          logText += `${'-'.repeat(60)}\n`;
+          
+          if (log.startedAt) {
+            logText += `Started: ${new Date(log.startedAt).toLocaleTimeString()}\n`;
+          }
+          
+          if (log.input !== undefined) {
+            logText += `\n📥 INPUT:\n${JSON.stringify(log.input, null, 2)}\n`;
+          }
+          
+          if (log.output !== undefined && log.output !== null) {
+            logText += `\n📤 OUTPUT:\n${JSON.stringify(log.output, null, 2)}\n`;
+          } else if (log.status === 'success') {
+            logText += `\n📤 OUTPUT: (null or empty)\n`;
+          }
+          
+          if (log.error) {
+            logText += `\n❌ ERROR:\n${log.error}\n`;
+          }
+          
+          if (log.finishedAt) {
+            const duration = log.startedAt && log.finishedAt 
+              ? new Date(log.finishedAt).getTime() - new Date(log.startedAt).getTime()
+              : null;
+            logText += `\nFinished: ${new Date(log.finishedAt).toLocaleTimeString()}`;
+            if (duration !== null) {
+              logText += ` (${duration}ms)`;
+            }
+            logText += '\n';
+          }
+          
+          return logText;
+        }
+        return `[${i + 1}] ${JSON.stringify(log, null, 2)}`;
+      }).join('\n');
     }
     return JSON.stringify(logs, null, 2);
   };
 
   return (
     <div className={cn(
-      "border-t border-border bg-card transition-all duration-300",
-      isExpanded ? "h-64" : "h-10"
+      "border-t border-border bg-card transition-all duration-300 flex-shrink-0",
+      isExpanded ? "h-96" : "h-10"
     )}>
       {/* Console Header */}
       <div 
@@ -201,12 +250,20 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
                     >
                       <div className="flex items-center gap-2">
                         {getStatusIcon(exec.status)}
-                        <span className="font-mono">{exec.id.slice(0, 8)}...</span>
+                        <span className="font-mono text-xs">{exec.id.slice(0, 8)}...</span>
+                        <Badge variant="outline" className={cn("text-xs px-1 py-0", getStatusColor(exec.status))}>
+                          {exec.status}
+                        </Badge>
                       </div>
-                      <div className="flex items-center justify-between mt-1 text-muted-foreground">
+                      <div className="flex items-center justify-between mt-1 text-muted-foreground text-xs">
                         <span>{new Date(exec.started_at).toLocaleTimeString()}</span>
                         <span>{formatDuration(exec.duration_ms)}</span>
                       </div>
+                      {exec.status === 'pending' && (
+                        <div className="text-xs text-muted-foreground mt-1 italic">
+                          Waiting to start...
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -241,20 +298,25 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
                   )}
 
                   <div>
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Logs</div>
-                    <pre className="p-3 rounded-md bg-muted text-xs font-mono whitespace-pre-wrap">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Input</div>
+                    <pre className="p-3 rounded-md bg-muted/50 text-xs font-mono whitespace-pre-wrap border border-border">
+                      {selectedExecution.input ? JSON.stringify(selectedExecution.input, null, 2) : 'No input data'}
+                    </pre>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Execution Logs (Node-by-Node)</div>
+                    <pre className="p-3 rounded-md bg-muted text-xs font-mono whitespace-pre-wrap max-h-96 overflow-auto">
                       {formatLogs(selectedExecution.logs)}
                     </pre>
                   </div>
 
-                  {selectedExecution.output && (
-                    <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-2">Output</div>
-                      <pre className="p-3 rounded-md bg-muted text-xs font-mono whitespace-pre-wrap">
-                        {JSON.stringify(selectedExecution.output, null, 2)}
-                      </pre>
-                    </div>
-                  )}
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Final Output</div>
+                    <pre className="p-3 rounded-md bg-muted/50 text-xs font-mono whitespace-pre-wrap border border-border">
+                      {selectedExecution.output ? JSON.stringify(selectedExecution.output, null, 2) : 'null (no output generated)'}
+                    </pre>
+                  </div>
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground">

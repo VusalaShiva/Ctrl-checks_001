@@ -100,9 +100,9 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     category: 'ai',
     icon: 'Brain',
     description: 'Process with GPT models',
-    defaultConfig: { model: 'gpt-4o', temperature: 0.7 },
+    defaultConfig: { model: 'gpt-4o', temperature: 0.7, memory: 10 },
     configFields: [
-      { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'sk-... (optional, uses Lovable AI if empty)' },
+      { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'sk-... (required)', required: true },
       { key: 'model', label: 'Model', type: 'select', options: [
         { label: 'GPT-4o', value: 'gpt-4o' },
         { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
@@ -110,6 +110,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
       ]},
       { key: 'prompt', label: 'System Prompt', type: 'textarea', placeholder: 'You are a helpful assistant...', required: true },
       { key: 'temperature', label: 'Temperature', type: 'number', defaultValue: 0.7 },
+      { key: 'memory', label: 'Memory', type: 'number', defaultValue: 10, placeholder: '10', helpText: 'Number of conversation turns to remember (each turn = 1 user + 1 AI message)' },
     ],
   },
   {
@@ -118,9 +119,9 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     category: 'ai',
     icon: 'Sparkles',
     description: 'Process with Claude models',
-    defaultConfig: { model: 'claude-3-sonnet', temperature: 0.7 },
+    defaultConfig: { model: 'claude-3-sonnet', temperature: 0.7, memory: 10 },
     configFields: [
-      { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'sk-ant-... (optional, uses Lovable AI if empty)' },
+      { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'sk-ant-... (required)', required: true },
       { key: 'model', label: 'Model', type: 'select', options: [
         { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet' },
         { label: 'Claude 3 Opus', value: 'claude-3-opus' },
@@ -128,6 +129,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
       ]},
       { key: 'prompt', label: 'System Prompt', type: 'textarea', placeholder: 'You are a helpful assistant...', required: true },
       { key: 'temperature', label: 'Temperature', type: 'number', defaultValue: 0.7 },
+      { key: 'memory', label: 'Memory', type: 'number', defaultValue: 10, placeholder: '10', helpText: 'Number of conversation turns to remember (each turn = 1 user + 1 AI message)' },
     ],
   },
   {
@@ -136,9 +138,9 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     category: 'ai',
     icon: 'Gem',
     description: 'Process with Gemini models',
-    defaultConfig: { model: 'gemini-2.5-flash', temperature: 0.7 },
+    defaultConfig: { model: 'gemini-2.5-flash', temperature: 0.7, memory: 10 },
     configFields: [
-      { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'AIza... (optional, uses Lovable AI if empty)' },
+      { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'AIza... (required)', required: true },
       { key: 'model', label: 'Model', type: 'select', options: [
         { label: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
         { label: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro' },
@@ -146,6 +148,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
       ]},
       { key: 'prompt', label: 'System Prompt', type: 'textarea', placeholder: 'You are a helpful assistant...', required: true },
       { key: 'temperature', label: 'Temperature', type: 'number', defaultValue: 0.7 },
+      { key: 'memory', label: 'Memory', type: 'number', defaultValue: 10, placeholder: '10', helpText: 'Number of conversation turns to remember (each turn = 1 user + 1 AI message)' },
     ],
   },
   {
@@ -165,7 +168,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     category: 'ai',
     icon: 'FileText',
     description: 'Summarize text content',
-    defaultConfig: { maxLength: 200, style: 'concise' },
+    defaultConfig: { maxLength: 200, style: 'concise', memory: 10 },
     configFields: [
       { key: 'maxLength', label: 'Max Length (words)', type: 'number', defaultValue: 200 },
       { key: 'style', label: 'Style', type: 'select', options: [
@@ -173,6 +176,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
         { label: 'Detailed', value: 'detailed' },
         { label: 'Bullet Points', value: 'bullets' },
       ]},
+      { key: 'memory', label: 'Memory', type: 'number', defaultValue: 10, placeholder: '10', helpText: 'Number of conversation turns to remember (each turn = 1 user + 1 AI message)' },
     ],
   },
   {
@@ -181,8 +185,10 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     category: 'ai',
     icon: 'Heart',
     description: 'Analyze text sentiment',
-    defaultConfig: {},
-    configFields: [],
+    defaultConfig: { memory: 10 },
+    configFields: [
+      { key: 'memory', label: 'Memory', type: 'number', defaultValue: 10, placeholder: '10', helpText: 'Number of conversation turns to remember (each turn = 1 user + 1 AI message)' },
+    ],
   },
 
   // Logic & Control

@@ -106,7 +106,7 @@ export default function WebhookSettings({ workflowId }: WebhookSettingsProps) {
           Webhook
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl max-w-[90vw]">
         <DialogHeader>
           <DialogTitle>Webhook Settings</DialogTitle>
           <DialogDescription>
@@ -137,13 +137,21 @@ export default function WebhookSettings({ workflowId }: WebhookSettingsProps) {
             {webhookEnabled && webhookUrl && (
               <div className="space-y-3">
                 <Label>Webhook URL</Label>
-                <div className="flex gap-2">
-                  <Input 
-                    value={webhookUrl} 
-                    readOnly 
-                    className="font-mono text-sm"
-                  />
-                  <Button variant="outline" size="icon" onClick={copyToClipboard}>
+                <div className="flex gap-2 items-start">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 p-2 border rounded-md bg-background">
+                      <code className="text-sm font-mono break-all whitespace-normal text-foreground flex-1">
+                        {webhookUrl}
+                      </code>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={copyToClipboard}
+                    className="flex-shrink-0 h-10"
+                    title="Copy webhook URL"
+                  >
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
@@ -154,11 +162,13 @@ export default function WebhookSettings({ workflowId }: WebhookSettingsProps) {
 
                 <div className="p-4 bg-muted rounded-lg space-y-2">
                   <p className="text-sm font-medium">Example cURL request:</p>
-                  <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
+                  <div className="bg-background p-3 rounded border overflow-x-auto">
+                    <pre className="text-xs whitespace-pre-wrap break-words">
 {`curl -X POST "${webhookUrl}" \\
   -H "Content-Type: application/json" \\
   -d '{"key": "value"}'`}
-                  </pre>
+                    </pre>
+                  </div>
                 </div>
 
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">

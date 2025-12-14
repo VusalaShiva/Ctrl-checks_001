@@ -1,3 +1,12 @@
+// Deno global type declaration for TypeScript
+declare const Deno: {
+  readTextFile(path: string | URL): Promise<string>;
+  env: {
+    get(key: string): string | undefined;
+  };
+  cwd(): string;
+};
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -46,7 +55,7 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { workflowId, input = {} } = await req.json();
+    const { workflowId, executionId: providedExecutionId, input = {} } = await req.json();
 
     if (!workflowId) {
       return new Response(JSON.stringify({ error: "workflowId is required" }), {
@@ -73,39 +82,113 @@ serve(async (req) => {
     const nodes = workflow.nodes as WorkflowNode[];
     const edges = workflow.edges as WorkflowEdge[];
 
-    // Create execution record
-    const { data: execution, error: execError } = await supabase
-      .from("executions")
-      .insert({
-        workflow_id: workflowId,
-        user_id: workflow.user_id,
-        status: "running",
-        trigger: "manual",
-        input,
-        logs: [],
-      })
-      .select()
-      .single();
+    let executionId: string;
+    let execution: { id: string; started_at: string };
 
-    if (execError || !execution) {
-      console.error("Execution creation error:", execError);
-      return new Response(JSON.stringify({ error: "Failed to create execution" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // If executionId is provided (from webhook-trigger), use existing execution
+    if (providedExecutionId) {
+      console.log(`Using existing execution: ${providedExecutionId}`);
+      const { data: existingExecution, error: fetchError } = await supabase
+        .from("executions")
+        .select("id, started_at, input")
+        .eq("id", providedExecutionId)
+        .single();
+      
+      console.log(`Fetched execution:`, JSON.stringify(existingExecution));
+
+      if (fetchError || !existingExecution) {
+        console.error("Execution fetch error:", fetchError);
+        return new Response(JSON.stringify({ error: "Execution not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      executionId = existingExecution.id;
+      execution = existingExecution;
+      
+      // If started_at is not set, set it now
+      if (!execution.started_at) {
+        const startedAt = new Date().toISOString();
+        await supabase
+          .from("executions")
+          .update({ started_at: startedAt })
+          .eq("id", executionId);
+        execution.started_at = startedAt;
+      }
+
+      // Update execution status to "running"
+      await supabase
+        .from("executions")
+        .update({ status: "running" })
+        .eq("id", executionId);
+      
+      console.log(`Execution ${executionId} status updated to running`);
+    } else {
+      // Create new execution record (for manual triggers)
+      console.log("Creating new execution record");
+      const { data: newExecution, error: execError } = await supabase
+        .from("executions")
+        .insert({
+          workflow_id: workflowId,
+          user_id: workflow.user_id,
+          status: "running",
+          trigger: "manual",
+          input,
+          logs: [],
+        })
+        .select()
+        .single();
+
+      if (execError || !newExecution) {
+        console.error("Execution creation error:", execError);
+        return new Response(JSON.stringify({ error: "Failed to create execution" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      executionId = newExecution.id;
+      execution = newExecution;
     }
-
-    const executionId = execution.id;
     const logs: ExecutionLog[] = [];
     const nodeOutputs: Record<string, unknown> = { trigger: input };
 
     // Build execution order (topological sort)
     const executionOrder = topologicalSort(nodes, edges);
     console.log("Execution order:", executionOrder.map(n => n.data.label));
+    console.log(`Total nodes to execute: ${executionOrder.length}`);
 
-    let finalOutput: unknown = null;
+    // Initialize finalOutput with input in case no nodes execute
+    let finalOutput: unknown = input;
     let hasError = false;
     let errorMessage = "";
+
+    // If no nodes to execute, return input as output
+    if (executionOrder.length === 0) {
+      console.warn("No nodes to execute in workflow");
+      await supabase
+        .from("executions")
+        .update({
+          status: "success",
+          finished_at: new Date().toISOString(),
+          duration_ms: 0,
+          output: input,
+          logs: [],
+        })
+        .eq("id", executionId);
+      
+      return new Response(
+        JSON.stringify({
+          executionId,
+          status: "success",
+          output: input,
+          logs: [],
+          durationMs: 0,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Execute nodes in order
     for (const node of executionOrder) {
@@ -119,20 +202,83 @@ serve(async (req) => {
       try {
         // Get inputs from connected nodes
         const inputEdges = edges.filter(e => e.target === node.id);
-        const nodeInput = inputEdges.length > 0
-          ? inputEdges.reduce((acc, edge) => ({ ...acc, [edge.source]: nodeOutputs[edge.source] }), {})
-          : input;
+        let nodeInput: unknown;
+        
+        if (inputEdges.length > 0) {
+          // If there's only one connected node, use its output directly
+          // Otherwise, combine all connected node outputs
+          if (inputEdges.length === 1) {
+            nodeInput = nodeOutputs[inputEdges[0].source];
+            console.log(`Node ${node.data.label} getting input from connected node ${inputEdges[0].source}:`, JSON.stringify(nodeInput));
+          } else {
+            nodeInput = inputEdges.reduce((acc, edge) => ({ ...acc, [edge.source]: nodeOutputs[edge.source] }), {});
+            console.log(`Node ${node.data.label} getting input from multiple connected nodes:`, JSON.stringify(nodeInput));
+          }
+        } else {
+          // For trigger nodes (no input edges), use the workflow input
+          nodeInput = input;
+          console.log(`Trigger node ${node.data.label} (${node.data.type}) using workflow input:`, JSON.stringify(nodeInput));
+        }
 
         log.input = nodeInput;
         console.log(`Executing node: ${node.data.label} (${node.data.type})`);
+        console.log(`Node input value:`, JSON.stringify(nodeInput));
+        console.log(`Node input type:`, typeof nodeInput);
+        console.log(`Node input is null?:`, nodeInput === null);
+        console.log(`Node input is undefined?:`, nodeInput === undefined);
 
         // Execute node based on type
-        const output = await executeNode(node, nodeInput, lovableApiKey);
+        // For AI nodes, retrieve conversation history based on node's memory limit
+        let history: Array<{role: string; content: string}> = [];
+        const isAINode = ["openai_gpt", "anthropic_claude", "google_gemini", "text_summarizer", "sentiment_analyzer"].includes(node.data.type);
         
-        nodeOutputs[node.id] = output;
-        finalOutput = output;
+        if (isAINode) {
+          // Get memory limit from node config (default: 10 turns)
+          const memoryLimit = (node.data.config.memory as number) || 10;
+          
+          // Get session_id from workflow input (passed from webhook-trigger)
+          const sessionId = (input as any)?._session_id || (input as any)?.session_id;
+          
+          if (sessionId && memoryLimit > 0) {
+            try {
+              history = await retrieveConversationHistory(supabase, workflowId, sessionId, memoryLimit);
+              console.log(`Retrieved ${history.length} messages for ${node.data.label} (memory limit: ${memoryLimit} turns)`);
+            } catch (historyError) {
+              console.error(`Error retrieving conversation history for ${node.data.label}:`, historyError);
+              // Continue without history if retrieval fails
+            }
+          }
+        }
         
-        log.output = output;
+        const output = await executeNode(node, nodeInput, lovableApiKey, history);
+        
+        console.log(`Node output value:`, JSON.stringify(output));
+        console.log(`Node output type:`, typeof output);
+        console.log(`Node output is null?:`, output === null);
+        console.log(`Node output is undefined?:`, output === undefined);
+        
+        // Store output - ensure we store the actual value, not null/undefined
+        let outputToStore = output;
+        if (output === null || output === undefined) {
+          console.error(`Node ${node.data.label} (${node.data.type}) returned null/undefined output!`);
+          console.error(`Node input was:`, JSON.stringify(nodeInput));
+          // For trigger nodes, if output is null, use the input instead
+          if (node.data.type === "webhook" || node.data.type === "manual_trigger" || 
+              node.data.type === "schedule" || node.data.type === "http_trigger") {
+            outputToStore = nodeInput || {};
+            console.log(`Using input as output for trigger node:`, JSON.stringify(outputToStore));
+          }
+        }
+        
+        // Store the output (use outputToStore which has fallback for trigger nodes)
+        nodeOutputs[node.id] = outputToStore;
+        finalOutput = outputToStore;
+        
+        console.log(`Stored output for node ${node.data.label}:`, JSON.stringify(outputToStore));
+        console.log(`NodeOutputs keys:`, Object.keys(nodeOutputs));
+        console.log(`NodeOutputs[${node.id}]:`, JSON.stringify(nodeOutputs[node.id]));
+        
+        log.output = outputToStore;
         log.status = "success";
         log.finishedAt = new Date().toISOString();
       } catch (error) {
@@ -146,11 +292,19 @@ serve(async (req) => {
 
       logs.push(log);
 
-      // Update execution with current logs
-      await supabase
-        .from("executions")
-        .update({ logs })
-        .eq("id", executionId);
+      // Update execution with current logs and status (incremental updates)
+      try {
+        await supabase
+          .from("executions")
+          .update({ 
+            logs,
+            status: hasError ? "failed" : "running", // Update status as we go
+          })
+          .eq("id", executionId);
+      } catch (updateError) {
+        console.error("Failed to update execution logs:", updateError);
+        // Continue execution even if log update fails
+      }
 
       if (hasError) break;
     }
@@ -159,13 +313,34 @@ serve(async (req) => {
     const finishedAt = new Date().toISOString();
     const durationMs = new Date(finishedAt).getTime() - new Date(execution.started_at).getTime();
 
+    // Ensure finalOutput is never null - use last successful node output or input
+    let finalOutputToStore = finalOutput;
+    if (finalOutputToStore === null || finalOutputToStore === undefined) {
+      console.warn("Final output is null/undefined, using last node output or input");
+      // Try to get the last successful node output from logs
+      const lastSuccessfulLog = logs.filter(l => l.status === "success" && l.output !== null && l.output !== undefined).pop();
+      if (lastSuccessfulLog && lastSuccessfulLog.output !== null && lastSuccessfulLog.output !== undefined) {
+        finalOutputToStore = lastSuccessfulLog.output;
+        console.log(`Using last successful node output:`, JSON.stringify(finalOutputToStore));
+      } else {
+        // Fallback to input
+        finalOutputToStore = input;
+        console.log(`Using input as fallback:`, JSON.stringify(finalOutputToStore));
+      }
+    }
+
+    console.log(`Finalizing execution with output:`, JSON.stringify(finalOutputToStore));
+    console.log(`Final output type:`, typeof finalOutputToStore);
+    console.log(`Has error:`, hasError);
+    console.log(`Total logs:`, logs.length);
+
     await supabase
       .from("executions")
       .update({
         status: hasError ? "failed" : "success",
         finished_at: finishedAt,
         duration_ms: durationMs,
-        output: finalOutput,
+        output: finalOutputToStore,
         error: hasError ? errorMessage : null,
         logs,
       })
@@ -175,7 +350,7 @@ serve(async (req) => {
       JSON.stringify({
         executionId,
         status: hasError ? "failed" : "success",
-        output: finalOutput,
+        output: finalOutputToStore,
         logs,
         durationMs,
       }),
@@ -183,8 +358,41 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Execute workflow error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    // If we have an executionId, update it to failed status
+    if (executionId) {
+      try {
+        await supabase
+          .from("executions")
+          .update({
+            status: "failed",
+            error: errorMessage,
+            finished_at: new Date().toISOString(),
+            logs: logs.length > 0 ? logs : [
+              {
+                nodeId: "system",
+                nodeName: "Workflow Execution",
+                status: "failed",
+                startedAt: new Date().toISOString(),
+                finishedAt: new Date().toISOString(),
+                error: errorMessage,
+              }
+            ],
+          })
+          .eq("id", executionId);
+      } catch (updateError) {
+        console.error("Failed to update execution status:", updateError);
+      }
+    }
+    
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ 
+        executionId: executionId || null,
+        status: "failed",
+        error: errorMessage,
+        logs: logs.length > 0 ? logs : [],
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -225,10 +433,82 @@ function topologicalSort(nodes: WorkflowNode[], edges: WorkflowEdge[]): Workflow
   return sorted;
 }
 
+// Retrieve conversation history for a session with a specific memory limit
+async function retrieveConversationHistory(
+  supabase: any,
+  workflowId: string,
+  sessionId: string,
+  memoryLimitTurns: number
+): Promise<Array<{role: string; content: string}>> {
+  const MAX_EXECUTIONS_TO_CHECK = memoryLimitTurns * 2; // Check more executions to find session matches
+  
+  try {
+    const { data: previousExecutions } = await supabase
+      .from("executions")
+      .select("input, output, logs")
+      .eq("workflow_id", workflowId)
+      .eq("trigger", "webhook")
+      .not("input", "is", null)
+      .order("started_at", { ascending: false })
+      .limit(MAX_EXECUTIONS_TO_CHECK);
+
+    if (!previousExecutions) {
+      return [];
+    }
+
+    // Filter executions from the same session and build conversation history
+    const sessionExecutions = previousExecutions.filter(exec => {
+      const execInput = exec.input as any;
+      return execInput?.session_id === sessionId || execInput?._session_id === sessionId;
+    }).slice(0, memoryLimitTurns); // Last N conversation turns in this session
+
+    const conversationHistory: Array<{role: string; content: string}> = [];
+
+    // Build conversation history from previous messages (reverse to get chronological order)
+    for (const exec of sessionExecutions.reverse()) {
+      const execInput = exec.input as any;
+      const execOutput = exec.output;
+      
+      if (execInput?.message) {
+        conversationHistory.push({
+          role: "user",
+          content: execInput.message
+        });
+      }
+      
+      if (execOutput) {
+        // Extract AI response from output
+        let aiResponse = "";
+        if (typeof execOutput === "string") {
+          aiResponse = execOutput;
+        } else if (typeof execOutput === "object") {
+          aiResponse = (execOutput as any).text || 
+                      (execOutput as any).content || 
+                      (execOutput as any).message ||
+                      JSON.stringify(execOutput);
+        }
+        
+        if (aiResponse) {
+          conversationHistory.push({
+            role: "assistant",
+            content: aiResponse
+          });
+        }
+      }
+    }
+
+    return conversationHistory;
+  } catch (error) {
+    console.error("Error retrieving conversation history:", error);
+    return [];
+  }
+}
+
 async function executeNode(
   node: WorkflowNode,
   input: unknown,
-  lovableApiKey?: string
+  lovableApiKey?: string,
+  conversationHistory?: Array<{role: string; content: string}>
 ): Promise<unknown> {
   const { type, config } = node.data;
 
@@ -237,6 +517,13 @@ async function executeNode(
     case "webhook":
     case "schedule":
     case "http_trigger":
+      // For trigger nodes, return the input directly
+      // If input is null/undefined, return an empty object to prevent null outputs
+      if (input === null || input === undefined) {
+        console.warn(`Trigger node ${node.data.label} received null/undefined input`);
+        return {};
+      }
+      console.log(`Trigger node ${node.data.label} returning input:`, JSON.stringify(input));
       return input;
 
     case "http_request": {
@@ -300,15 +587,24 @@ async function executeNode(
     case "sentiment_analyzer": {
       const nodeApiKey = config.apiKey as string;
 
-      if (type === "google_gemini" && nodeApiKey) {
-        return executeGeminiNode(config, input, nodeApiKey);
+      // Google Gemini uses direct API call
+      if (type === "google_gemini") {
+        if (!nodeApiKey || !nodeApiKey.trim()) {
+          throw new Error(`API Key is required for ${node.data.label || "Google Gemini"} node. Please add your Gemini API key in the node properties.`);
+        }
+        return executeGeminiNode(config, input, nodeApiKey, conversationHistory);
       }
 
-      const finalApiKey = nodeApiKey || lovableApiKey;
-
-      if (!finalApiKey) {
-        throw new Error("AI gateway not configured");
+      // For other AI nodes, API key is mandatory
+      if (!nodeApiKey || !nodeApiKey.trim()) {
+        const nodeName = type === "openai_gpt" ? "OpenAI GPT" : 
+                        type === "anthropic_claude" ? "Anthropic Claude" : 
+                        type === "text_summarizer" ? "Text Summarizer" :
+                        "Sentiment Analyzer";
+        throw new Error(`API Key is required for ${node.data.label || nodeName} node. Please add your API key in the node properties.`);
       }
+
+      const finalApiKey = nodeApiKey;
 
       let prompt = (config.prompt as string) || "";
       const temperature = (config.temperature as number) || 0.7;
@@ -342,10 +638,39 @@ async function executeNode(
         },
         body: JSON.stringify({
           model,
-          messages: [
-            { role: "system", content: prompt || "You are a helpful assistant." },
-            { role: "user", content: typeof input === "string" ? input : JSON.stringify(input) },
-          ],
+          messages: (() => {
+            // Build messages array with conversation history
+            const messages: Array<{role: string; content: string}> = [
+              { role: "system", content: prompt || "You are a helpful assistant." }
+            ];
+            
+            // Add conversation history if available (for memory)
+            if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+              messages.push(...conversationHistory);
+            }
+            
+            // Add current user message
+            const userMessage = (() => {
+              // Extract message from input - handle different input formats
+              if (typeof input === "string") {
+                return input;
+              } else if (typeof input === "object" && input !== null) {
+                const inputObj = input as Record<string, unknown>;
+                // Try to extract message from common fields
+                return (inputObj.message as string) || 
+                       (inputObj.text as string) || 
+                       (inputObj.content as string) ||
+                       (inputObj.input as string) ||
+                       JSON.stringify(input);
+              } else {
+                return String(input);
+              }
+            })();
+            
+            messages.push({ role: "user", content: userMessage });
+            
+            return messages;
+          })(),
           temperature,
         }),
       });
@@ -583,11 +908,46 @@ async function executeNode(
 async function executeGeminiNode(
   config: Record<string, unknown>,
   input: unknown,
-  apiKey: string
+  apiKey: string,
+  conversationHistory?: Array<{role: string; content: string}>
 ): Promise<unknown> {
   const model = (config.model as string) || "gemini-pro";
   const prompt = (config.prompt as string) || "You are a helpful assistant.";
   const temperature = (config.temperature as number) || 0.7;
+
+  // Extract message from input - handle different input formats
+  let userMessage = "";
+  if (typeof input === "string") {
+    userMessage = input;
+  } else if (typeof input === "object" && input !== null) {
+    const inputObj = input as Record<string, unknown>;
+    // Try to extract message from common fields
+    userMessage = (inputObj.message as string) || 
+                  (inputObj.text as string) || 
+                  (inputObj.content as string) ||
+                  (inputObj.input as string) ||
+                  JSON.stringify(input);
+  } else {
+    userMessage = String(input);
+  }
+
+  // Build conversation history for Gemini
+  const conversationParts: Array<{text: string}> = [];
+  
+  // Add system prompt
+  conversationParts.push({ text: prompt });
+  
+  // Add conversation history if available (for memory)
+  if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+    // Format conversation history for Gemini
+    const historyText = conversationHistory
+      .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
+      .join("\n\n");
+    conversationParts.push({ text: `Previous conversation:\n${historyText}\n\nCurrent message:` });
+  }
+  
+  // Add current user message
+  conversationParts.push({ text: userMessage });
 
   const API_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -600,14 +960,7 @@ async function executeGeminiNode(
     body: JSON.stringify({
       contents: [
         {
-          parts: [
-            {
-              text: prompt,
-            },
-            {
-              text: typeof input === "string" ? input : JSON.stringify(input),
-            },
-          ],
+          parts: conversationParts,
         },
       ],
       generationConfig: {
