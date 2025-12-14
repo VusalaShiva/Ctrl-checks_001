@@ -149,6 +149,11 @@ export default function WorkflowBuilder() {
     }
 
     setIsRunning(true);
+    // Expand console to show logs
+    if (!consoleExpanded) {
+      setConsoleExpanded(true);
+    }
+    
     toast({
       title: 'Running workflow',
       description: 'Execution started...',
@@ -169,9 +174,8 @@ export default function WorkflowBuilder() {
         variant: data.status === 'success' ? 'default' : 'destructive',
       });
 
-      if (data.executionId) {
-        navigate(`/execution/${data.executionId}`);
-      }
+      // Don't navigate away - logs will show in console
+      // The ExecutionConsole component will auto-update via realtime subscription
     } catch (error) {
       console.error('Execution error:', error);
       toast({
@@ -182,7 +186,7 @@ export default function WorkflowBuilder() {
     } finally {
       setIsRunning(false);
     }
-  }, [nodes, navigate]);
+  }, [nodes, consoleExpanded]);
 
 
   const onDragStart = useCallback((event: React.DragEvent, nodeType: NodeTypeDefinition) => {

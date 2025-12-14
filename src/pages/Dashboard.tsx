@@ -1,19 +1,58 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { Zap, Plus, Play, Clock, CheckCircle, XCircle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tables } from "@/integrations/supabase/types";
+
+type Workflow = Tables<'workflows'>;
 
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [workflowsLoading, setWorkflowsLoading] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) {
       navigate("/signin");
     }
   }, [user, loading, navigate]);
+
+  // Load workflows to check if any exist
+  useEffect(() => {
+    if (user) {
+      loadWorkflows();
+    }
+  }, [user]);
+
+  const loadWorkflows = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('workflows')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      setWorkflows(data || []);
+    } catch (error) {
+      console.error('Error loading workflows:', error);
+    } finally {
+      setWorkflowsLoading(false);
+    }
+  };
+
+  const handleViewWorkflows = () => {
+    // If workflows exist, navigate with highlight parameter for most recent
+    if (workflows.length > 0) {
+      navigate(`/workflows?highlight=${workflows[0].id}`);
+    } else {
+      navigate('/workflows');
+    }
+  };
 
   if (loading) {
     return (
@@ -53,7 +92,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             <Button 
               variant="outline" 
-              onClick={() => navigate('/workflows')}
+              onClick={handleViewWorkflows}
               className="hover:bg-accent hover:text-accent-foreground"
             >
               <FolderOpen className="mr-2 h-4 w-4" /> View Workflows
@@ -92,12 +131,12 @@ export default function Dashboard() {
             </div>
             <h3 className="text-xl font-semibold mb-2">No workflows yet</h3>
             <p className="text-muted-foreground text-center max-w-md mb-6">
-              Create your first workflow to start automating your tasks with AI-powered intelligence.
+              No workflows created yet. Start by creating your first AI agent or automation workflow.
             </p>
             <div className="flex items-center gap-3">
               <Button 
                 variant="outline" 
-                onClick={() => navigate('/workflows')}
+                onClick={handleViewWorkflows}
                 className="hover:bg-accent hover:text-accent-foreground"
               >
                 <FolderOpen className="mr-2 h-4 w-4" /> View All Workflows
