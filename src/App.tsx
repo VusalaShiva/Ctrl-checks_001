@@ -15,6 +15,11 @@ import Workflows from "./pages/Workflows";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
 import Executions from "./pages/Executions";
 import ExecutionDetail from "./pages/ExecutionDetail";
+import Templates from "./pages/Templates";
+import TemplatesManager from "./pages/admin/TemplatesManager";
+import TemplateEditor from "./pages/admin/TemplateEditor";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import { AdminRoute } from "./components/admin/AdminRoute";
 import NotFound from "./pages/NotFound";
 
 // Component to conditionally render Chatbot only on landing page
@@ -43,10 +48,14 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/templates" element={<Templates />} />
             <Route path="/workflows" element={<Workflows />} />
             <Route path="/workflow/:id" element={<WorkflowBuilder />} />
             <Route path="/executions" element={<Executions />} />
             <Route path="/execution/:id" element={<ExecutionDetail />} />
+            <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+            <Route path="/admin/templates" element={<AdminRoute><TemplatesManager /></AdminRoute>} />
+            <Route path="/admin/template/:id/edit" element={<AdminRoute><TemplateEditor /></AdminRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <ConditionalChatbot />

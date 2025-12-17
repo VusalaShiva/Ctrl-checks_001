@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import { useRole } from "@/hooks/useRole";
 import { supabase } from "@/integrations/supabase/client";
-import { Zap, Plus, Play, Clock, CheckCircle, XCircle, FolderOpen } from "lucide-react";
+import { Zap, Plus, Play, Clock, CheckCircle, XCircle, FolderOpen, LayoutTemplate, History, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tables } from "@/integrations/supabase/types";
@@ -11,6 +12,7 @@ type Workflow = Tables<'workflows'>;
 
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
+  const { canAccessAdmin } = useRole();
   const navigate = useNavigate();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflowsLoading, setWorkflowsLoading] = useState(true);
@@ -75,8 +77,42 @@ export default function Dashboard() {
             </div>
             <span className="text-xl font-bold">CtrlChecks</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">{user.email}</span>
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate('/templates')}
+              className="hidden sm:flex"
+            >
+              <LayoutTemplate className="mr-2 h-4 w-4" /> Templates
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate('/workflows')}
+              className="hidden sm:flex"
+            >
+              <FolderOpen className="mr-2 h-4 w-4" /> Workflows
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate('/executions')}
+              className="hidden sm:flex"
+            >
+              <History className="mr-2 h-4 w-4" /> Executions
+            </Button>
+            {canAccessAdmin && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => navigate('/admin/dashboard')}
+                className="hidden sm:flex"
+              >
+                <Settings className="mr-2 h-4 w-4" /> Admin
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground hidden md:inline">{user.email}</span>
             <Button variant="outline" size="sm" onClick={() => signOut()}>Sign Out</Button>
           </div>
         </div>
@@ -89,7 +125,14 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold">Welcome back!</h1>
             <p className="text-muted-foreground mt-1">Here's what's happening with your workflows</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/templates')}
+              className="hover:bg-accent hover:text-accent-foreground"
+            >
+              <LayoutTemplate className="mr-2 h-4 w-4" /> Browse Templates
+            </Button>
             <Button 
               variant="outline" 
               onClick={handleViewWorkflows}
@@ -97,6 +140,22 @@ export default function Dashboard() {
             >
               <FolderOpen className="mr-2 h-4 w-4" /> View Workflows
             </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/executions')}
+              className="hover:bg-accent hover:text-accent-foreground"
+            >
+              <History className="mr-2 h-4 w-4" /> Executions
+            </Button>
+            {canAccessAdmin && (
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/admin/dashboard')}
+                className="hover:bg-accent hover:text-accent-foreground"
+              >
+                <Settings className="mr-2 h-4 w-4" /> Admin Panel
+              </Button>
+            )}
             <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
               <Plus className="mr-2 h-4 w-4" /> New Workflow
             </Button>
@@ -133,7 +192,14 @@ export default function Dashboard() {
             <p className="text-muted-foreground text-center max-w-md mb-6">
               No workflows created yet. Start by creating your first AI agent or automation workflow.
             </p>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap justify-center">
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/templates')}
+                className="hover:bg-accent hover:text-accent-foreground"
+              >
+                <LayoutTemplate className="mr-2 h-4 w-4" /> Browse Templates
+              </Button>
               <Button 
                 variant="outline" 
                 onClick={handleViewWorkflows}

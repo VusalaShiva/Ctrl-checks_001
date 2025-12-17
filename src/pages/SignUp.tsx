@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Mail, Lock, User } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, User, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
@@ -13,12 +14,17 @@ const signUpSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
+  role: z.enum(["user", "admin"], {
+    required_error: "Please select a role",
+  }),
 });
 
 export default function SignUp() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState<"user" | "admin">("user");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -31,7 +37,13 @@ export default function SignUp() {
     e.preventDefault();
     setErrors({});
 
-    const result = signUpSchema.safeParse({ fullName, email, password });
+    // Validate passwords match
+    if (password !== confirmPassword) {
+      setErrors({ confirmPassword: "Passwords do not match" });
+      return;
+    }
+
+    const result = signUpSchema.safeParse({ fullName, email, password, role });
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
       result.error.errors.forEach((err) => {
@@ -42,7 +54,7 @@ export default function SignUp() {
     }
 
     setLoading(true);
-    const { error } = await signUp(email, password, fullName);
+    const { error } = await signUp(email, password, fullName, role);
     setLoading(false);
 
     if (error) {
@@ -55,7 +67,13 @@ export default function SignUp() {
     }
 
     toast({ title: "Welcome!", description: "Your account has been created." });
-    navigate("/dashboard");
+    
+    // Redirect based on role
+    if (role === "admin") {
+      navigate("/admin/dashboard");
+    } else {
+      navigate("/dashboard");
+    }
   };
 
   const handleGoogleSignUp = async () => {
@@ -120,6 +138,37 @@ export default function SignUp() {
               </div>
               {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input id="confirmPassword" type={showPassword ? "text" : "password"} placeholder="••••••••" className="pl-10" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+              </div>
+              {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
+            </div>
+            
+            {/* Role Selection */}
+            <div className="space-y-3">
+              <Label>Account Type <span className="text-destructive">*</span></Label>
+              <RadioGroup value={role} onValueChange={(value) => setRole(value as "user" | "admin")} className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="user" id="role-user" />
+                  <Label htmlFor="role-user" className="font-normal cursor-pointer flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    User
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="admin" id="role-admin" />
+                  <Label htmlFor="role-admin" className="font-normal cursor-pointer flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Admin
+                  </Label>
+                </div>
+              </RadioGroup>
+              {errors.role && <p className="text-sm text-destructive">{errors.role}</p>}
+            </div>
+            
             <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
               {loading ? "Creating account..." : "Create Account"}
             </Button>

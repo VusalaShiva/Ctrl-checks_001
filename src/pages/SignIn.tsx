@@ -1,20 +1,23 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Mail, Lock } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
+import { isAdmin } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loginAsAdmin, setLoginAsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -26,14 +29,61 @@ export default function SignIn() {
     }
 
     setLoading(true);
-    const { error } = await signIn(email, password);
-    setLoading(false);
-
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    
+    // Step 1: Authenticate user
+    const { error: authError } = await signIn(email, password);
+    
+    if (authError) {
+      setLoading(false);
+      toast({ 
+        title: "Authentication Failed", 
+        description: authError.message, 
+        variant: "destructive" 
+      });
       return;
     }
 
+    // Step 2: If admin checkbox is checked, verify admin role
+    if (loginAsAdmin) {
+      try {
+        // Wait a moment for auth state to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const userIsAdmin = await isAdmin();
+        
+        if (!userIsAdmin) {
+          // User is not admin - reject login and sign out
+          await signOut();
+          
+          setLoading(false);
+          toast({ 
+            title: "Unauthorized", 
+            description: "Admin access only. You do not have admin privileges.", 
+            variant: "destructive" 
+          });
+          return;
+        }
+        
+        // User is admin - redirect to admin dashboard
+        setLoading(false);
+        navigate("/admin/dashboard");
+        return;
+      } catch (roleError) {
+        // Role check failed - reject login
+        await signOut();
+        
+        setLoading(false);
+        toast({ 
+          title: "Error", 
+          description: "Failed to verify admin role. Please try again.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+    }
+
+    // Step 3: Normal user login - redirect to dashboard
+    setLoading(false);
     navigate("/dashboard");
   };
 
@@ -87,6 +137,23 @@ export default function SignIn() {
                 </button>
               </div>
             </div>
+            
+            {/* Admin Checkbox */}
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="admin-login" 
+                checked={loginAsAdmin}
+                onCheckedChange={(checked) => setLoginAsAdmin(checked === true)}
+              />
+              <Label 
+                htmlFor="admin-login" 
+                className="text-sm font-normal cursor-pointer flex items-center gap-2"
+              >
+                <Shield className="h-4 w-4" />
+                Login as Admin
+              </Label>
+            </div>
+            
             <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </Button>

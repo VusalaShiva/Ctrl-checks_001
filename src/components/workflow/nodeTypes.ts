@@ -163,30 +163,14 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     ],
   },
   {
-    type: 'text_summarizer',
-    label: 'Text Summarizer',
-    category: 'ai',
-    icon: 'FileText',
-    description: 'Summarize text content',
-    defaultConfig: { maxLength: 200, style: 'concise', memory: 10 },
-    configFields: [
-      { key: 'maxLength', label: 'Max Length (words)', type: 'number', defaultValue: 200 },
-      { key: 'style', label: 'Style', type: 'select', options: [
-        { label: 'Concise', value: 'concise' },
-        { label: 'Detailed', value: 'detailed' },
-        { label: 'Bullet Points', value: 'bullets' },
-      ]},
-      { key: 'memory', label: 'Memory', type: 'number', defaultValue: 10, placeholder: '10', helpText: 'Number of conversation turns to remember (each turn = 1 user + 1 AI message)' },
-    ],
-  },
-  {
     type: 'sentiment_analyzer',
     label: 'Sentiment Analysis',
     category: 'ai',
     icon: 'Heart',
     description: 'Analyze text sentiment',
-    defaultConfig: { memory: 10 },
+    defaultConfig: { apiKey: '', memory: 10 },
     configFields: [
+      { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'sk-... (required)', required: true },
       { key: 'memory', label: 'Memory', type: 'number', defaultValue: 10, placeholder: '10', helpText: 'Number of conversation turns to remember (each turn = 1 user + 1 AI message)' },
     ],
   },

@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName?: string, role?: "user" | "admin") => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -39,21 +39,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, fullName?: string) => {
+  const signUp = async (email: string, password: string, fullName?: string, role: "user" | "admin" = "user") => {
     const redirectUrl = `${window.location.origin}/`;
     
-    const { error } = await supabase.auth.signUp({
+    // Create auth user with role in metadata
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
+          role: role, // Store role in metadata for trigger
         },
       },
     });
     
-    return { error: error as Error | null };
+    if (authError) {
+      return { error: authError as Error | null };
+    }
+
+    // Wait for user to be created and trigger to run
+    if (authData.user) {
+      // Wait for the trigger to create the profile and set initial role
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Manually set role as fallback (in case trigger doesn't work or sets wrong role)
+      // This ensures role is always set correctly based on user selection
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .upsert({
+          user_id: authData.user.id,
+          role: role,
+        }, {
+          onConflict: 'user_id,role'
+        });
+
+      if (roleError) {
+        console.error('Error setting user role:', roleError);
+        // Try alternative: delete existing and insert new
+        await supabase
+          .from('user_roles')
+          .delete()
+          .eq('user_id', authData.user.id);
+        
+        const { error: insertError } = await supabase
+          .from('user_roles')
+          .insert({ user_id: authData.user.id, role: role });
+        
+        if (insertError) {
+          console.error('Failed to set role even after retry:', insertError);
+        } else {
+          console.log(`Role '${role}' set for user ${authData.user.id} (after retry)`);
+        }
+      } else {
+        console.log(`Role '${role}' successfully set for user ${authData.user.id}`);
+      }
+    }
+    
+    return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {

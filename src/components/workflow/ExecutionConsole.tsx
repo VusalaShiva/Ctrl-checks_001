@@ -311,12 +311,12 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
                     </pre>
                   </div>
 
-                  <div>
+                    <div>
                     <div className="text-xs font-medium text-muted-foreground mb-2">Final Output</div>
                     <pre className="p-3 rounded-md bg-muted/50 text-xs font-mono whitespace-pre-wrap border border-border">
                       {selectedExecution.output ? JSON.stringify(selectedExecution.output, null, 2) : 'null (no output generated)'}
-                    </pre>
-                  </div>
+                      </pre>
+                    </div>
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground">

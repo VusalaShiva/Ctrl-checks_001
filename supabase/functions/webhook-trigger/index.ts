@@ -131,18 +131,18 @@ serve(async (req) => {
     let executeResponse: Response;
     try {
       executeResponse = await fetch(executeUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseServiceKey}`,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseServiceKey}`,
           "apikey": supabaseServiceKey,
-        },
-        body: JSON.stringify({
-          workflowId,
-          executionId: execution.id,
+      },
+      body: JSON.stringify({
+        workflowId,
+        executionId: execution.id,
           input: fullInput, // session_id is already included in fullInput
-        }),
-      });
+      }),
+    });
     } catch (fetchError) {
       console.error("Failed to call execute-workflow:", fetchError);
       // Update execution status to failed

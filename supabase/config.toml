@@ -3,6 +3,12 @@ project_id = "nvrrqvlqnnvlihtlgmzn"
 [functions.execute-workflow]
 verify_jwt = false
 
+[functions.admin-templates]
+verify_jwt = true
+
+[functions.copy-template]
+verify_jwt = true
+
 [functions.webhook-trigger]
 verify_jwt = false
 

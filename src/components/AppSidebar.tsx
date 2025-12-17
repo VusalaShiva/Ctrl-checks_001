@@ -8,10 +8,13 @@ import {
   Bell,
   User,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  LayoutTemplate,
+  Shield
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/lib/auth";
+import { useRole } from "@/hooks/useRole";
 import { useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -38,6 +41,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Templates", url: "/templates", icon: LayoutTemplate },
   { title: "Workflows", url: "/workflows", icon: GitBranch },
   { title: "Executions", url: "/executions", icon: Play },
 ];
@@ -52,6 +56,7 @@ const settingsNavItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const { user, signOut } = useAuth();
+  const { canAccessAdmin } = useRole();
   const navigate = useNavigate();
   const collapsed = state === "collapsed";
 
@@ -101,6 +106,43 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarSeparator />
+
+        {canAccessAdmin && (
+          <>
+            <SidebarGroup>
+              <SidebarGroupLabel>Admin</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip="Admin Dashboard">
+                      <NavLink 
+                        to="/admin/dashboard" 
+                        className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:bg-muted/50"
+                        activeClassName="bg-muted text-primary font-medium"
+                      >
+                        <Shield className="h-4 w-4 shrink-0" />
+                        {!collapsed && <span>Admin Dashboard</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip="Templates Manager">
+                      <NavLink 
+                        to="/admin/templates" 
+                        className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors hover:bg-muted/50"
+                        activeClassName="bg-muted text-primary font-medium"
+                      >
+                        <LayoutTemplate className="h-4 w-4 shrink-0" />
+                        {!collapsed && <span>Templates Manager</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarSeparator />
+          </>
+        )}
 
         <SidebarGroup>
           <SidebarGroupLabel>Settings</SidebarGroupLabel>

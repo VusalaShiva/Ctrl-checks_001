@@ -167,7 +167,7 @@ export default function WebhookSettings({ workflowId }: WebhookSettingsProps) {
 {`curl -X POST "${webhookUrl}" \\
   -H "Content-Type: application/json" \\
   -d '{"key": "value"}'`}
-                    </pre>
+                  </pre>
                   </div>
                 </div>
 

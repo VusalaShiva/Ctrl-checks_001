@@ -73,7 +73,30 @@ VITE_SUPABASE_PROJECT_ID="YOUR_PROJECT_ID"
 
 ### Step 5: Set Up Database Schema
 
-Go to your Supabase Dashboard → **SQL Editor** and run the following SQL scripts in order:
+Go to your Supabase Dashboard → **SQL Editor** and run the following SQL scripts **in order**:
+
+#### 5.1 Complete Database Setup
+
+Run `DATABASE_SETUP.sql` - This creates all tables, enums, functions, triggers, and RLS policies.
+
+#### 5.2 Admin User Setup
+
+Run `ADMIN_SETUP.sql` - This helps you set up an admin user (see file for instructions).
+
+#### 5.3 Sample Data (Optional)
+
+Run `SAMPLE_DATA.sql` - This inserts 10 pre-built workflow templates.
+
+---
+
+**Note**: The old migration files are consolidated into these three files. You only need to run:
+1. `DATABASE_SETUP.sql` (required)
+2. `ADMIN_SETUP.sql` (required for admin access)
+3. `SAMPLE_DATA.sql` (optional - adds templates)
+
+---
+
+**Old Setup Instructions (for reference only):**
 
 #### 5.1 Create Enums
 
