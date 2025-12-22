@@ -46,13 +46,24 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
         .order('started_at', { ascending: false })
         .limit(10);
 
-      if (error) throw error;
+      if (error) {
+        // Handle 406 errors gracefully (might be RLS or column issues)
+        if (error.code === 'PGRST116' || error.message?.includes('406')) {
+          console.warn('Executions query returned 406, this might be a permissions issue:', error);
+          // Don't throw, just set empty array
+          setExecutions([]);
+          return;
+        }
+        throw error;
+      }
       setExecutions(data || []);
       if (data && data.length > 0 && !selectedExecution) {
         setSelectedExecution(data[0]);
       }
     } catch (error) {
       console.error('Error loading executions:', error);
+      // Set empty array on error to prevent UI issues
+      setExecutions([]);
     } finally {
       setLoading(false);
     }

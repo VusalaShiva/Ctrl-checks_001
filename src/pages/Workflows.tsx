@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Search, Zap, MoreHorizontal, Play, Trash2, Copy, Clock, History, Bot, Cpu, Workflow, MessageSquare, ChevronRight, Edit } from 'lucide-react';
+import { Plus, Search, Zap, MoreHorizontal, Play, Trash2, Copy, Clock, History, Bot, Cpu, Workflow, MessageSquare, ChevronRight, Edit, Sparkles, Wrench, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,6 +36,7 @@ export default function Workflows() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
   const [workflowExecutions, setWorkflowExecutions] = useState<Execution[]>([]);
   const [loadingExecutions, setLoadingExecutions] = useState(false);
+  const [showCreateOptions, setShowCreateOptions] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -275,7 +276,7 @@ export default function Workflows() {
             </Button>
             <Button
               className="gradient-primary text-primary-foreground"
-              onClick={() => navigate('/workflow/new')}
+              onClick={() => setShowCreateOptions(true)}
             >
               <Plus className="mr-2 h-4 w-4" /> New Workflow
             </Button>
@@ -311,7 +312,7 @@ export default function Workflows() {
               {!search && (
                 <Button
                   className="gradient-primary text-primary-foreground"
-                  onClick={() => navigate('/workflow/new')}
+                  onClick={() => setShowCreateOptions(true)}
                 >
                   <Plus className="mr-2 h-4 w-4" /> Create Your First Workflow
                 </Button>
@@ -609,6 +610,92 @@ export default function Workflows() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Workflow Creation Options Overlay */}
+      {showCreateOptions && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowCreateOptions(false);
+            }
+          }}
+        >
+          {/* Blurred Background */}
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-md" />
+          
+          {/* Content */}
+          <div className="relative z-10 w-full max-w-4xl px-4 py-8">
+            <Button
+              variant="ghost"
+              onClick={() => setShowCreateOptions(false)}
+              className="mb-4"
+              size="sm"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back
+            </Button>
+
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-semibold mb-1.5">Create New Workflow</h1>
+              <p className="text-muted-foreground text-sm">
+                Choose how you'd like to create your workflow
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Manual Creation Option */}
+              <Card className="cursor-pointer transition-shadow border hover:shadow-md">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
+                    <Wrench className="h-5 w-5 text-primary" />
+                  </div>
+                  <CardTitle className="text-lg font-semibold">Create Workflow Manually</CardTitle>
+                  <CardDescription className="text-sm mt-1.5">
+                    Build your workflow step by step using our visual workflow builder. 
+                    Drag and drop nodes, configure each step, and connect them together.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    className="w-full gradient-primary text-primary-foreground"
+                    onClick={() => {
+                      setShowCreateOptions(false);
+                      navigate('/workflow/new');
+                    }}
+                  >
+                    Start Building
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* AI Creation Option */}
+              <Card className="cursor-pointer transition-shadow border hover:shadow-md">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <CardTitle className="text-lg font-semibold">Create Using AI</CardTitle>
+                  <CardDescription className="text-sm mt-1.5">
+                    Describe your workflow in natural language and let AI automatically 
+                    generate the workflow structure for you. Perfect for quick prototyping.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    className="w-full gradient-primary text-primary-foreground"
+                    onClick={() => {
+                      setShowCreateOptions(false);
+                      navigate('/workflow/ai');
+                    }}
+                  >
+                    Generate with AI
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
