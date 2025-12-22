@@ -14,6 +14,7 @@ import {
 import { useWorkflowStore } from '@/stores/workflowStore';
 import WebhookSettings from './WebhookSettings';
 import ScheduleSettings from './ScheduleSettings';
+import AgentSettings from './AgentSettings';
 
 interface WorkflowHeaderProps {
   onSave: () => void;
@@ -63,6 +64,7 @@ export default function WorkflowHeader({ onSave, onRun, isSaving, isRunning }: W
       <div className="flex items-center gap-2">
         <ScheduleSettings workflowId={workflowId} />
         <WebhookSettings workflowId={workflowId} />
+        <AgentSettings workflowId={workflowId} />
         
         <Button variant="outline" size="sm" onClick={onSave} disabled={isSaving || !isDirty}>
           <Save className="mr-2 h-4 w-4" />

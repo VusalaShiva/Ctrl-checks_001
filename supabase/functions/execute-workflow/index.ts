@@ -9,6 +9,8 @@ declare const Deno: {
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { executeGoogleSheetsOperation, getGoogleAccessToken } from "../_shared/google-sheets.ts";
+import { LLMAdapter } from "../_shared/llm-adapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -347,7 +349,13 @@ serve(async (req) => {
           }
         }
         
-        const output = await executeNode(node, nodeInput, lovableApiKey, history);
+        // Add user_id and workflow_id to node input for context
+        const enrichedInput = {
+          ...(typeof nodeInput === 'object' && nodeInput !== null ? nodeInput : { value: nodeInput }),
+          _user_id: workflow.user_id,
+          _workflow_id: workflowId,
+        };
+        const output = await executeNode(node, enrichedInput, lovableApiKey, history, workflow.user_id);
         
         // If this is an If/Else node, store the condition result
         if (node.data.type === "if_else" && typeof output === "object" && output !== null) {
@@ -623,7 +631,8 @@ async function executeNode(
   node: WorkflowNode,
   input: unknown,
   lovableApiKey?: string,
-  conversationHistory?: Array<{role: string; content: string}>
+  conversationHistory?: Array<{role: string; content: string}>,
+  userId?: string
 ): Promise<unknown> {
   const { type, config } = node.data;
 
@@ -859,74 +868,100 @@ async function executeNode(
         prompt = "Analyze the sentiment of the following text. Return a JSON object with 'sentiment' (positive/negative/neutral), 'confidence' (0-1), and 'emotions' (array of detected emotions).";
       }
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${finalApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages: (() => {
-            // Build messages array with conversation history
-            const messages: Array<{role: string; content: string}> = [
-              { role: "system", content: prompt || "You are a helpful assistant." }
-            ];
-            
-            // Add conversation history if available (for memory)
-            if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length > 0) {
-              messages.push(...conversationHistory);
-            }
-            
-            // Add current user message
-            const userMessage = (() => {
-              // Extract message from input - handle different input formats
-              if (typeof input === "string") {
-                return input;
-              } else if (typeof input === "object" && input !== null) {
-                const inputObj = input as Record<string, unknown>;
-                // Try to extract message from common fields
-                return (inputObj.message as string) || 
-                       (inputObj.text as string) || 
-                       (inputObj.content as string) ||
-                       (inputObj.input as string) ||
-                       JSON.stringify(input);
-              } else {
-                return String(input);
-              }
-            })();
-            
-            messages.push({ role: "user", content: userMessage });
-            
-            return messages;
-          })(),
-          temperature,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (response.status === 429) {
-          throw new Error("AI rate limit exceeded. Please try again later.");
-        }
-        if (response.status === 402) {
-          throw new Error("AI credits exhausted. Please add more credits.");
-        }
-        throw new Error(`AI request failed: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || "";
+      // Build messages array with conversation history
+      const messages: Array<{role: 'system' | 'user' | 'assistant'; content: string}> = [
+        { role: "system", content: prompt || "You are a helpful assistant." }
+      ];
       
-      // Try to parse as JSON for sentiment analyzer
-      if (type === "sentiment_analyzer") {
-        try {
-          return JSON.parse(content);
-        } catch {
-          return { raw: content };
-        }
+      // Add conversation history if available (for memory)
+      if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+        messages.push(...conversationHistory.map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content
+        })));
       }
-      return content;
+      
+      // Add current user message
+      const userMessage = (() => {
+        // Extract message from input - handle different input formats
+        if (typeof input === "string") {
+          return input;
+        } else if (typeof input === "object" && input !== null) {
+          const inputObj = input as Record<string, unknown>;
+          // Try to extract message from common fields
+          return (inputObj.message as string) || 
+                 (inputObj.text as string) || 
+                 (inputObj.content as string) ||
+                 (inputObj.input as string) ||
+                 JSON.stringify(input);
+        } else {
+          return String(input);
+        }
+      })();
+      
+      messages.push({ role: "user", content: userMessage });
+
+      // Use LLM Adapter for unified interface
+      try {
+        const response = await llmAdapter.chat(provider, messages, {
+          model,
+          temperature,
+          apiKey: finalApiKey,
+        });
+
+        const content = response.content;
+        
+        // Try to parse as JSON for sentiment analyzer
+        if (type === "sentiment_analyzer") {
+          try {
+            return JSON.parse(content);
+          } catch {
+            return { raw: content };
+          }
+        }
+        
+        return content;
+      } catch (error) {
+        // Fallback to gateway for backward compatibility
+        console.warn("LLM Adapter failed, falling back to gateway:", error);
+        
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${finalApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          if (response.status === 429) {
+            throw new Error("AI rate limit exceeded. Please try again later.");
+          }
+          if (response.status === 402) {
+            throw new Error("AI credits exhausted. Please add more credits.");
+          }
+          throw new Error(`AI request failed: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        
+        // Try to parse as JSON for sentiment analyzer
+        if (type === "sentiment_analyzer") {
+          try {
+            return JSON.parse(content);
+          } catch {
+            return { raw: content };
+          }
+        }
+        return content;
+      }
     }
 
     case "slack_message":
@@ -1505,6 +1540,212 @@ async function executeNode(
     case "database_write": {
       console.log("Database write node - requires integration setup");
       return { warning: "Database nodes require additional setup", config };
+    }
+
+    case "google_sheets": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const operation = (config.operation as string) || 'read';
+      const spreadsheetId = replaceTemplates(config.spreadsheetId as string, input);
+      const sheetName = config.sheetName ? replaceTemplates(config.sheetName as string, input) : undefined;
+      const range = config.range ? replaceTemplates(config.range as string, input) : undefined;
+      const outputFormat = (config.outputFormat as string) || 'json';
+      const readDirection = (config.readDirection as string) || 'rows';
+      const allowWrite = (config.allowWrite as boolean) || false;
+
+      // Get user ID from workflow context
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google Sheets node: User ID not found in workflow context');
+      }
+
+      // Check write permissions
+      if ((operation === 'write' || operation === 'append' || operation === 'update') && !allowWrite) {
+        // Check if user is admin
+        const { data: userRole } = await supabaseClient
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('role', 'admin')
+          .single();
+
+        if (!userRole) {
+          throw new Error('Write access to Google Sheets requires admin privileges. Please enable "Allow Write Access" in node settings (admin only).');
+        }
+      }
+
+      // Get Google OAuth access token
+      const accessToken = await getGoogleAccessToken(supabaseClient, userId);
+
+      if (!accessToken) {
+        throw new Error('Google OAuth token not found. Please authenticate with Google first.');
+      }
+
+      // Prepare data for write operations
+      let writeData: unknown[][] | undefined;
+      if (operation === 'write' || operation === 'append' || operation === 'update') {
+        const dataConfig = config.data;
+        if (dataConfig) {
+          if (typeof dataConfig === 'string') {
+            try {
+              writeData = JSON.parse(replaceTemplates(dataConfig, input));
+            } catch {
+              throw new Error('Invalid JSON format for write data. Expected 2D array: [["col1", "col2"], ["val1", "val2"]]');
+            }
+          } else if (Array.isArray(dataConfig)) {
+            writeData = dataConfig as unknown[][];
+          } else {
+            throw new Error('Write data must be a 2D array (array of rows)');
+          }
+        } else {
+          // Try to extract from input
+          const inputData = (input as any)?.data || (input as any)?.rows || input;
+          if (Array.isArray(inputData)) {
+            // Check if it's already a 2D array
+            if (Array.isArray(inputData[0])) {
+              writeData = inputData as unknown[][];
+            } else {
+              // Convert 1D array to 2D (single row)
+              writeData = [inputData as unknown[]];
+            }
+          } else {
+            throw new Error('No data provided for write operation. Add data in node config or pass it in input.');
+          }
+        }
+      }
+
+      // Execute Google Sheets operation
+      const result = await executeGoogleSheetsOperation({
+        spreadsheetId,
+        sheetName,
+        range,
+        operation: operation as 'read' | 'write' | 'append' | 'update',
+        outputFormat: outputFormat as 'json' | 'keyvalue' | 'text',
+        readDirection: readDirection as 'rows' | 'columns',
+        data: writeData,
+        accessToken,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Google Sheets operation failed');
+      }
+
+      // Return formatted result
+      return {
+        data: result.data,
+        rows: result.rows,
+        columns: result.columns,
+        operation,
+        spreadsheetId,
+        sheetName: sheetName || 'Sheet1',
+        range: range || 'All',
+        formatted: outputFormat,
+      };
+    }
+
+    case "memory": {
+      // Import memory service
+      const { HybridMemoryService } = await import("../_shared/memory.ts");
+      
+      const operation = (config.operation as string) || 'store';
+      const memoryType = (config.memoryType as string) || 'both';
+      const ttl = (config.ttl as number) || 3600;
+      const maxMessages = (config.maxMessages as number) || 100;
+      
+      // Get session ID from input or generate one
+      const sessionId = (input as any)?._session_id || 
+                       (input as any)?.session_id || 
+                       `session-${Date.now()}`;
+      
+      // Get workflow ID from context (passed from execution)
+      const workflowId = (input as any)?._workflow_id || '';
+      
+      // Initialize memory service
+      const memoryService = new HybridMemoryService(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        { type: memoryType === 'short' ? 'redis' : memoryType === 'long' ? 'vector' : 'hybrid', ttl, maxMessages }
+      );
+      
+      await memoryService.initialize();
+      
+      // Ensure session exists in database
+      if (workflowId) {
+        await memoryService.getOrCreateSession(workflowId, sessionId, (input as any)?._user_id);
+      }
+      
+      if (operation === 'store') {
+        // Extract message from input
+        let message = '';
+        let role: 'user' | 'assistant' | 'system' = 'user';
+        
+        if (typeof input === 'string') {
+          message = input;
+        } else if (typeof input === 'object' && input !== null) {
+          const inputObj = input as Record<string, unknown>;
+          message = (inputObj.message as string) || 
+                   (inputObj.content as string) || 
+                   (inputObj.text as string) ||
+                   JSON.stringify(input);
+          role = (inputObj.role as 'user' | 'assistant' | 'system') || 'user';
+        }
+        
+        if (!message) {
+          throw new Error('Memory node (store): No message content found in input');
+        }
+        
+        await memoryService.store(sessionId, role, message, (input as any)?.metadata);
+        
+        return { 
+          success: true, 
+          stored: true, 
+          sessionId,
+          message: 'Message stored in memory',
+          role,
+          content: message.substring(0, 100) + (message.length > 100 ? '...' : '')
+        };
+      } 
+      else if (operation === 'retrieve') {
+        const messages = await memoryService.retrieve(sessionId, maxMessages);
+        
+        return {
+          messages,
+          count: messages.length,
+          sessionId,
+          // Also pass through original input for downstream nodes
+          ...(typeof input === 'object' && input !== null ? input : {})
+        };
+      } 
+      else if (operation === 'clear') {
+        await memoryService.clear(sessionId);
+        return { 
+          success: true, 
+          cleared: true,
+          sessionId,
+          message: 'Memory cleared'
+        };
+      }
+      else if (operation === 'search') {
+        const query = (input as any)?.query || 
+                     (input as any)?.search || 
+                     (typeof input === 'string' ? input : '');
+        
+        if (!query) {
+          throw new Error('Memory node (search): Search query is required');
+        }
+        
+        const messages = await memoryService.search(sessionId, query, maxMessages);
+        return {
+          messages,
+          query,
+          count: messages.length,
+          sessionId
+        };
+      }
+      
+      throw new Error(`Unknown memory operation: ${operation}`);
     }
 
     default:

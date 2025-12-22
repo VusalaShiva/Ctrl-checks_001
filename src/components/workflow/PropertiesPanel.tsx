@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import NodeUsageCard from './NodeUsageCard';
+import GoogleSheetsSettings from './GoogleSheetsSettings';
 import { 
   Trash2, X, Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, 
   GitBranch, GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, 
@@ -165,26 +166,43 @@ export default function PropertiesPanel() {
           </div>
 
           {/* Config Fields */}
-          {nodeDefinition && nodeDefinition.configFields.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
-                Configuration
-              </h3>
-              {nodeDefinition.configFields.map((field) => (
-                <div key={field.key} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor={field.key} className="text-sm flex items-center gap-1">
-                      {field.label}
-                      {field.required && <span className="text-destructive">*</span>}
-                    </Label>
-                  </div>
-                  {field.helpText && (
-                    <p className="text-xs text-muted-foreground">{field.helpText}</p>
-                  )}
-                  {renderField(field)}
+          {nodeDefinition && (
+            <>
+              {/* Custom Google Sheets Settings */}
+              {selectedNode.data.type === 'google_sheets' ? (
+                <div className="space-y-4">
+                  <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+                    Configuration
+                  </h3>
+                  <GoogleSheetsSettings
+                    config={selectedNode.data.config}
+                    onConfigChange={(newConfig) => {
+                      updateNodeConfig(selectedNode.id, newConfig);
+                    }}
+                  />
                 </div>
-              ))}
-            </div>
+              ) : nodeDefinition.configFields.length > 0 ? (
+                <div className="space-y-4">
+                  <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+                    Configuration
+                  </h3>
+                  {nodeDefinition.configFields.map((field) => (
+                    <div key={field.key} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor={field.key} className="text-sm flex items-center gap-1">
+                          {field.label}
+                          {field.required && <span className="text-destructive">*</span>}
+                        </Label>
+                      </div>
+                      {field.helpText && (
+                        <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                      )}
+                      {renderField(field)}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
           )}
 
           {/* Node ID */}

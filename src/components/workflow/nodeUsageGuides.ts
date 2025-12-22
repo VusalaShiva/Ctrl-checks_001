@@ -294,6 +294,35 @@ Useful for storing computed values to use in multiple places.`,
     tips: ['Access with {{variables.name}}', 'Great for values used multiple times', 'Persists through entire workflow'],
   },
 
+  google_sheets: {
+    overview: 'Read or write data from Google Sheets. Connect your spreadsheets to workflows for data analysis, validation, and automation.',
+    inputs: ['spreadsheet_id', 'range', 'data (for write operations)'],
+    outputs: ['data', 'rows', 'columns', 'formatted_data'],
+    example: `Operation: Read
+Spreadsheet ID: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+Sheet: Sheet1
+Range: A1:D100
+Output Format: JSON
+
+Output: {
+  data: [
+    {Name: "John", Email: "john@example.com", Status: "Active"},
+    {Name: "Jane", Email: "jane@example.com", Status: "Pending"}
+  ],
+  rows: 2,
+  columns: 4
+}
+
+AI Agent can then analyze, filter, or process this data.`,
+    tips: [
+      'Get Spreadsheet ID from URL: /d/SPREADSHEET_ID/edit',
+      'Leave range empty to read all used cells',
+      'Use key-value format for easier AI processing',
+      'Admin can enable write access for updates',
+      'Authenticate with Google account first',
+    ],
+  },
+
   merge_data: {
     overview: 'Combine data from multiple sources. Merge objects together or concatenate arrays.',
     inputs: ['multiple data inputs'],

@@ -1,14 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useRole } from "@/hooks/useRole";
 import { supabase } from "@/integrations/supabase/client";
-import { Zap, Plus, Play, Clock, CheckCircle, XCircle, FolderOpen, LayoutTemplate, History, Settings } from "lucide-react";
+import { Zap, Plus, Play, CheckCircle, XCircle, FolderOpen, LayoutTemplate, History, Settings, MoreHorizontal, Copy, Trash2, Clock, Bot, Workflow, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tables } from "@/integrations/supabase/types";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tables, Json } from "@/integrations/supabase/types";
+import { toast } from "@/hooks/use-toast";
 
-type Workflow = Tables<'workflows'>;
+type Workflow = Tables<'workflows'> & {
+  last_execution?: { started_at: string; status: string } | null;
+  execution_count?: number;
+  workflow_type?: 'chatbot' | 'agent' | 'automation';
+};
 
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
@@ -16,6 +29,109 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflowsLoading, setWorkflowsLoading] = useState(true);
+  const [stats, setStats] = useState({
+    total: 0,
+    executionsToday: 0,
+    successRate: 100,
+    failed: 0,
+  });
+
+  const detectWorkflowType = (nodes: Json): 'chatbot' | 'agent' | 'automation' => {
+    if (!Array.isArray(nodes)) return 'automation';
+    
+    const nodeTypes = nodes.map((n: any) => n?.data?.type || n?.type).filter(Boolean);
+    
+    const hasAINodes = nodeTypes.some((type: string) => 
+      ['openai_gpt', 'anthropic_claude', 'google_gemini', 'memory'].includes(type)
+    );
+    
+    const hasReasoning = nodeTypes.some((type: string) => 
+      type.includes('reasoning') || type.includes('agent')
+    );
+    
+    if (hasReasoning) return 'agent';
+    if (hasAINodes && nodeTypes.includes('webhook')) return 'chatbot';
+    if (hasAINodes) return 'agent';
+    return 'automation';
+  };
+
+  const loadWorkflows = useCallback(async () => {
+    try {
+      const { data: workflowsData, error: workflowsError } = await supabase
+        .from('workflows')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(6); // Show latest 6 workflows on dashboard
+
+      if (workflowsError) throw workflowsError;
+
+      const workflowsWithStats = await Promise.all(
+        (workflowsData || []).map(async (workflow) => {
+          const { data: lastExec } = await supabase
+            .from('executions')
+            .select('started_at, status')
+            .eq('workflow_id', workflow.id)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          const { count } = await supabase
+            .from('executions')
+            .select('*', { count: 'exact', head: true })
+            .eq('workflow_id', workflow.id);
+
+          return {
+            ...workflow,
+            last_execution: lastExec || null,
+            execution_count: count || 0,
+            workflow_type: detectWorkflowType(workflow.nodes),
+          };
+        })
+      );
+
+      setWorkflows(workflowsWithStats);
+    } catch (error) {
+      console.error('Error loading workflows:', error);
+    } finally {
+      setWorkflowsLoading(false);
+    }
+  }, []);
+
+  const loadStats = useCallback(async () => {
+    try {
+      // Total workflows
+      const { count: totalCount } = await supabase
+        .from('workflows')
+        .select('*', { count: 'exact', head: true });
+
+      // Executions today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const { count: todayCount } = await supabase
+        .from('executions')
+        .select('*', { count: 'exact', head: true })
+        .gte('started_at', today.toISOString());
+
+      // Success rate and failed
+      const { data: allExecutions } = await supabase
+        .from('executions')
+        .select('status');
+
+      const totalExecutions = allExecutions?.length || 0;
+      const successful = allExecutions?.filter(e => e.status === 'completed').length || 0;
+      const failed = allExecutions?.filter(e => e.status === 'failed').length || 0;
+      const successRate = totalExecutions > 0 ? Math.round((successful / totalExecutions) * 100) : 100;
+
+      setStats({
+        total: totalCount || 0,
+        executionsToday: todayCount || 0,
+        successRate,
+        failed,
+      });
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -23,38 +139,99 @@ export default function Dashboard() {
     }
   }, [user, loading, navigate]);
 
-  // Load workflows to check if any exist
   useEffect(() => {
     if (user) {
       loadWorkflows();
+      loadStats();
     }
-  }, [user]);
+  }, [user, loadWorkflows, loadStats]);
 
-  const loadWorkflows = async () => {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-success/10 text-success border-success/20';
+      case 'paused': return 'bg-warning/10 text-warning border-warning/20';
+      case 'draft': return 'bg-muted text-muted-foreground';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  const getWorkflowTypeIcon = (type?: string) => {
+    switch (type) {
+      case 'chatbot': return <MessageSquare className="h-4 w-4" />;
+      case 'agent': return <Bot className="h-4 w-4" />;
+      default: return <Workflow className="h-4 w-4" />;
+    }
+  };
+
+  const getWorkflowTypeLabel = (type?: string) => {
+    switch (type) {
+      case 'chatbot': return 'Chatbot';
+      case 'agent': return 'AI Agent';
+      default: return 'Automation';
+    }
+  };
+
+  const duplicateWorkflow = async (workflow: Workflow) => {
     try {
       const { data, error } = await supabase
         .from('workflows')
-        .select('*')
-        .order('updated_at', { ascending: false })
-        .limit(1);
+        .insert({
+          name: `${workflow.name} (Copy)`,
+          description: workflow.description,
+          nodes: workflow.nodes,
+          edges: workflow.edges,
+          status: 'draft',
+          workflow_type: workflow.workflow_type || 'automation',
+        })
+        .select()
+        .single();
 
       if (error) throw error;
-      setWorkflows(data || []);
+
+      toast({
+        title: 'Success',
+        description: 'Workflow duplicated successfully',
+      });
+
+      loadWorkflows();
     } catch (error) {
-      console.error('Error loading workflows:', error);
-    } finally {
-      setWorkflowsLoading(false);
+      console.error('Error duplicating workflow:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to duplicate workflow',
+        variant: 'destructive',
+      });
     }
   };
 
-  const handleViewWorkflows = () => {
-    // If workflows exist, navigate with highlight parameter for most recent
-    if (workflows.length > 0) {
-      navigate(`/workflows?highlight=${workflows[0].id}`);
-    } else {
-      navigate('/workflows');
+  const deleteWorkflow = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this workflow?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('workflows')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Workflow deleted successfully',
+      });
+
+      loadWorkflows();
+      loadStats();
+    } catch (error) {
+      console.error('Error deleting workflow:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete workflow',
+        variant: 'destructive',
+      });
     }
   };
+
 
   if (loading) {
     return (
@@ -125,50 +302,18 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold">Welcome back!</h1>
             <p className="text-muted-foreground mt-1">Here's what's happening with your workflows</p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/templates')}
-              className="hover:bg-accent hover:text-accent-foreground"
-            >
-              <LayoutTemplate className="mr-2 h-4 w-4" /> Browse Templates
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={handleViewWorkflows}
-              className="hover:bg-accent hover:text-accent-foreground"
-            >
-              <FolderOpen className="mr-2 h-4 w-4" /> View Workflows
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/executions')}
-              className="hover:bg-accent hover:text-accent-foreground"
-            >
-              <History className="mr-2 h-4 w-4" /> Executions
-            </Button>
-            {canAccessAdmin && (
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/admin/dashboard')}
-                className="hover:bg-accent hover:text-accent-foreground"
-              >
-                <Settings className="mr-2 h-4 w-4" /> Admin Panel
-              </Button>
-            )}
-            <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
-              <Plus className="mr-2 h-4 w-4" /> New Workflow
-            </Button>
-          </div>
+          <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
+            <Plus className="mr-2 h-4 w-4" /> New Workflow
+          </Button>
         </div>
 
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-4 mb-8">
           {[
-            { label: "Total Workflows", value: "0", icon: Zap, color: "text-primary" },
-            { label: "Executions Today", value: "0", icon: Play, color: "text-secondary" },
-            { label: "Success Rate", value: "100%", icon: CheckCircle, color: "text-success" },
-            { label: "Failed", value: "0", icon: XCircle, color: "text-destructive" },
+            { label: "Total Workflows", value: stats.total.toString(), icon: Zap, color: "text-primary" },
+            { label: "Executions Today", value: stats.executionsToday.toString(), icon: Play, color: "text-secondary" },
+            { label: "Success Rate", value: `${stats.successRate}%`, icon: CheckCircle, color: "text-success" },
+            { label: "Failed", value: stats.failed.toString(), icon: XCircle, color: "text-destructive" },
           ].map((stat) => (
             <Card key={stat.label}>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -182,37 +327,110 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Empty State */}
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="rounded-full bg-muted p-6 mb-4">
-              <Zap className="h-12 w-12 text-muted-foreground" />
+        {/* Workflows Section */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold">Your Workflows</h2>
+            {workflows.length > 0 && (
+              <Button variant="outline" onClick={() => navigate('/workflows')}>
+                View All
+              </Button>
+            )}
+          </div>
+
+          {workflowsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
-            <h3 className="text-xl font-semibold mb-2">No workflows yet</h3>
-            <p className="text-muted-foreground text-center max-w-md mb-6">
-              No workflows created yet. Start by creating your first AI agent or automation workflow.
-            </p>
-            <div className="flex items-center gap-3 flex-wrap justify-center">
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/templates')}
-                className="hover:bg-accent hover:text-accent-foreground"
-              >
-                <LayoutTemplate className="mr-2 h-4 w-4" /> Browse Templates
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={handleViewWorkflows}
-                className="hover:bg-accent hover:text-accent-foreground"
-              >
-                <FolderOpen className="mr-2 h-4 w-4" /> View All Workflows
-              </Button>
-              <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
-                <Plus className="mr-2 h-4 w-4" /> Create Your First Workflow
-              </Button>
+          ) : workflows.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <div className="rounded-full bg-muted p-6 mb-4">
+                  <Zap className="h-12 w-12 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">No workflows yet</h3>
+                <p className="text-muted-foreground text-center max-w-md mb-6">
+                  No workflows created yet. Start by creating your first AI agent or automation workflow.
+                </p>
+                <Button className="gradient-primary text-primary-foreground" onClick={() => navigate('/workflow/new')}>
+                  <Plus className="mr-2 h-4 w-4" /> Create Your First Workflow
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {workflows.map((workflow) => (
+                <Card
+                  key={workflow.id}
+                  className="hover:border-primary/50 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/workflow/${workflow.id}`)}
+                >
+                  <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                    <div className="space-y-1">
+                      <CardTitle className="text-lg">{workflow.name}</CardTitle>
+                      <CardDescription className="line-clamp-2">
+                        {workflow.description || 'No description'}
+                      </CardDescription>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/workflow/${workflow.id}`); }}>
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); duplicateWorkflow(workflow); }}>
+                          <Copy className="mr-2 h-4 w-4" /> Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={(e) => { e.stopPropagation(); deleteWorkflow(workflow.id); }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className={getStatusColor(workflow.status)}>
+                          {workflow.status}
+                        </Badge>
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          {getWorkflowTypeIcon(workflow.workflow_type)}
+                          {getWorkflowTypeLabel(workflow.workflow_type)}
+                        </Badge>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Play className="h-3 w-3" />
+                          {workflow.execution_count || 0} executions
+                        </div>
+                        {workflow.last_execution && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(workflow.last_execution.started_at).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Updated</span>
+                        <span>{new Date(workflow.updated_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
       </main>
     </div>
   );
