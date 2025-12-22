@@ -20,14 +20,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Handle OAuth callback with hash fragments
+    const handleOAuthCallback = async () => {
+      // Check if we have hash fragments (OAuth callback)
+      if (window.location.hash) {
+        try {
+          // Supabase will automatically parse the hash and set the session
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) {
+            console.error('Error getting session from OAuth callback:', error);
+          }
+          
+          // Clean up the hash from URL after processing
+          if (session) {
+            // Remove hash fragments from URL
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        } catch (err) {
+          console.error('OAuth callback error:', err);
+        }
+      }
+    };
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        
+        // Clean up hash after successful auth
+        if (event === 'SIGNED_IN' && window.location.hash) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
       }
     );
+
+    // Handle OAuth callback
+    handleOAuthCallback();
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {

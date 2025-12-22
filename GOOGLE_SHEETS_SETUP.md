@@ -35,6 +35,12 @@ The Google Sheets node allows you to:
    - User Type: **External** (for public access)
    - App name: "CtrlChecks AI"
    - Scopes: Add `https://www.googleapis.com/auth/spreadsheets.readonly` and `https://www.googleapis.com/auth/spreadsheets`
+   - **⚠️ IMPORTANT: Add Test Users**
+     - Scroll down to the "Test users" section
+     - Click "+ ADD USERS"
+     - Add your Google account email address (and any other users who need access)
+     - Click "ADD"
+     - **Without test users, you'll get Error 403: access_denied**
 4. Create OAuth client:
    - Application type: **Web application**
    - Authorized JavaScript origins:
@@ -45,6 +51,28 @@ The Google Sheets node allows you to:
      - `https://your-supabase-project.supabase.co/auth/v1/callback`
      - `http://localhost:8080/auth/google/callback` (for development)
 5. **Copy the Client ID and Client Secret**
+
+### 1.2.1 Fixing "Error 403: access_denied" 
+
+If you're getting this error:
+```
+nvrrqvlqnnvlihtlgmzn.supabase.co has not completed the Google verification process.
+The app is currently being tested, and can only be accessed by developer-approved testers.
+```
+
+**Solution:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Navigate to **APIs & Services** > **OAuth consent screen**
+3. Scroll down to the **"Test users"** section
+4. Click **"+ ADD USERS"**
+5. Add your Google account email (the one you're trying to sign in with)
+6. Click **"ADD"**
+7. Try connecting again in your app
+
+**Alternative: Publish Your App (for production)**
+- Click **"PUBLISH APP"** at the top of the OAuth consent screen
+- This makes your app available to all Google users (no test user restrictions)
+- Note: Publishing may require verification for sensitive scopes, but Google Sheets scopes are usually fine
 
 ### 1.3 Configure Supabase Environment Variables
 
@@ -173,9 +201,10 @@ When Google Sheets data is passed to AI nodes, the agent can:
 
 **Solution**: Click "Connect Google Account" in the node settings
 
-### "Permission denied"
+### "Permission denied" or "Error 403: access_denied"
 
 **Solution**: 
+- **If you see "app is currently being tested"**: Add yourself as a test user in Google Cloud Console OAuth consent screen (see section 1.2.1 above)
 - Make sure you have access to the spreadsheet
 - Share the spreadsheet with the Google account you authenticated with
 - For write operations, ensure you have edit permissions
