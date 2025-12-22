@@ -13,6 +13,8 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Workflows from "./pages/Workflows";
 import WorkflowBuilder from "./pages/WorkflowBuilder";
+import WorkflowCreationChoice from "./pages/WorkflowCreationChoice";
+import AIWorkflowBuilder from "./pages/AIWorkflowBuilder";
 import Executions from "./pages/Executions";
 import ExecutionDetail from "./pages/ExecutionDetail";
 import Templates from "./pages/Templates";
@@ -40,7 +42,12 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/signup" element={<SignUp />} />
@@ -50,6 +57,8 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/workflows" element={<Workflows />} />
+            <Route path="/workflow/create" element={<WorkflowCreationChoice />} />
+            <Route path="/workflow/ai" element={<AIWorkflowBuilder />} />
             <Route path="/workflow/:id" element={<WorkflowBuilder />} />
             <Route path="/executions" element={<Executions />} />
             <Route path="/execution/:id" element={<ExecutionDetail />} />

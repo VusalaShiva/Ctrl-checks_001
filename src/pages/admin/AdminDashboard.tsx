@@ -100,7 +100,7 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => navigate('/dashboard')}>
               View User Dashboard
             </Button>
-            <Button variant="outline" onClick={() => navigate('/workflow/new')}>
+            <Button variant="outline" onClick={() => navigate('/workflows')}>
               Create Workflow
             </Button>
             <Button variant="outline" onClick={() => navigate('/workflows')}>

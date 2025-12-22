@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:generate-workflow": "npx supabase functions deploy generate-workflow --project-ref nvrrqvlqnnvlihtlgmzn"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -255,14 +255,15 @@ export class LLMAdapter {
 
     // Map model names to Gemini format
     const modelMap: Record<string, string> = {
+      'gemini-1.5-flash': 'gemini-1.5-flash',
+      'gemini-1.5-pro': 'gemini-1.5-pro',
       'gemini-2.5-flash': 'gemini-2.5-flash',
       'gemini-2.5-pro': 'gemini-2.5-pro',
       'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
       'gemini-pro': 'gemini-pro',
-      'gemini-1.5-pro': 'gemini-1.5-pro',
     };
 
-    const model = modelMap[options.model] || options.model || 'gemini-2.5-flash';
+    const model = modelMap[options.model] || options.model || 'gemini-1.5-flash';
 
     // Convert messages to Gemini format
     // Gemini uses a different structure with parts
