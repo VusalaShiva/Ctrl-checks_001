@@ -74,7 +74,7 @@ export default function GoogleSheetsSettings({ config, onConfigChange }: GoogleS
     try {
       // Get Google OAuth client ID from environment or use Supabase's
       const redirectUrl = `${window.location.origin}/auth/google/callback`;
-      
+
       // Initiate OAuth flow
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -83,7 +83,7 @@ export default function GoogleSheetsSettings({ config, onConfigChange }: GoogleS
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
-            scope: 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/spreadsheets',
+            scope: 'https://www.googleapis.com/auth/spreadsheets email profile',
           },
         },
       });
@@ -317,12 +317,18 @@ export default function GoogleSheetsSettings({ config, onConfigChange }: GoogleS
                 updateConfig('data', e.target.value);
               }
             }}
-            placeholder='[["Name", "Email"], ["John", "john@example.com"]]'
+            placeholder={
+              config.operation === 'append'
+                ? '[["New Value 1", "New Value 2"]]'
+                : '[["Header1", "Header2"], ["Value1", "Value2"]]'
+            }
             rows={6}
             className="font-mono text-sm"
           />
           <p className="text-xs text-muted-foreground">
-            Use JSON array format: [["header1", "header2"], ["value1", "value2"]]
+            {config.operation === 'append'
+              ? 'Enter values to append as new rows: [["val1", "val2"]]'
+              : 'Enter headers and values to overwrite: [["Header", "Header"], ["val1", "val2"]]'}
           </p>
         </div>
       )}

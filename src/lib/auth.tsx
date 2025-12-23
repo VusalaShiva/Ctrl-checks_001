@@ -20,27 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Handle OAuth callback with hash fragments
-    const handleOAuthCallback = async () => {
-      // Check if we have hash fragments (OAuth callback)
-      if (window.location.hash) {
-        try {
-          // Supabase will automatically parse the hash and set the session
-          const { data: { session }, error } = await supabase.auth.getSession();
-          if (error) {
-            console.error('Error getting session from OAuth callback:', error);
-          }
-          
-          // Clean up the hash from URL after processing
-          if (session) {
-            // Remove hash fragments from URL
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-        } catch (err) {
-          console.error('OAuth callback error:', err);
-        }
-      }
-    };
+
 
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -49,18 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
-        
-        // Clean up hash after successful auth
-        if (event === 'SIGNED_IN' && window.location.hash) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
       }
     );
 
-    // Handle OAuth callback
-    handleOAuthCallback();
-
-    // THEN check for existing session
+    // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -72,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName?: string, role: "user" | "admin" = "user") => {
     const redirectUrl = `${window.location.origin}/`;
-    
+
     // Create auth user with role in metadata
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
@@ -85,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       },
     });
-    
+
     if (authError) {
       return { error: authError as Error | null };
     }
@@ -94,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (authData.user) {
       // Wait for the trigger to create the profile and set initial role
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       // Manually set role as fallback (in case trigger doesn't work or sets wrong role)
       // This ensures role is always set correctly based on user selection
       const { error: roleError } = await supabase
@@ -113,11 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .from('user_roles')
           .delete()
           .eq('user_id', authData.user.id);
-        
+
         const { error: insertError } = await supabase
           .from('user_roles')
           .insert({ user_id: authData.user.id, role: role });
-        
+
         if (insertError) {
           console.error('Failed to set role even after retry:', insertError);
         } else {
@@ -127,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log(`Role '${role}' successfully set for user ${authData.user.id}`);
       }
     }
-    
+
     return { error: null };
   };
 
@@ -136,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
     });
-    
+
     return { error: error as Error | null };
   };
 
@@ -152,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         },
       });
-      
+
       if (error) {
         console.error('Google OAuth error:', error);
         return { error: error as Error | null };
