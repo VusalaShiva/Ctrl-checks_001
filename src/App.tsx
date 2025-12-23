@@ -23,14 +23,15 @@ import TemplateEditor from "./pages/admin/TemplateEditor";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import { AdminRoute } from "./components/admin/AdminRoute";
 import NotFound from "./pages/NotFound";
+import GoogleAuthCallback from "./pages/auth/google/Callback";
 
 // Component to conditionally render Chatbot only on landing page
 const ConditionalChatbot = () => {
   const location = useLocation();
-  
+
   // Only show chatbot on the landing page (pre-login pages)
   const showChatbot = location.pathname === "/";
-  
+
   return showChatbot ? <Chatbot /> : null;
 };
 
@@ -65,6 +66,7 @@ const App = () => (
             <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/admin/templates" element={<AdminRoute><TemplatesManager /></AdminRoute>} />
             <Route path="/admin/template/:id/edit" element={<AdminRoute><TemplateEditor /></AdminRoute>} />
+            <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <ConditionalChatbot />
