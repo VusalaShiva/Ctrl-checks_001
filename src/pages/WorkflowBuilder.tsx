@@ -12,6 +12,8 @@ import PropertiesPanel from '@/components/workflow/PropertiesPanel';
 import ExecutionConsole from '@/components/workflow/ExecutionConsole';
 import { Edge } from '@xyflow/react';
 import { Json } from '@/integrations/supabase/types';
+import { validateAndAutoCompleteWorkflow } from '@/lib/workflowValidator';
+import { handleWorkflowError, validateBeforeExecution } from '@/lib/workflowErrorHandler';
 
 export default function WorkflowBuilder() {
   const { id } = useParams();
@@ -59,17 +61,59 @@ export default function WorkflowBuilder() {
       if (data) {
         setWorkflowId(data.id);
         setWorkflowName(data.name);
-        setNodes((data.nodes as unknown as WorkflowNode[]) || []);
-        setEdges((data.edges as unknown as Edge[]) || []);
-        setIsDirty(false);
+        
+        // Validate and auto-complete workflow on load
+        const loadedNodes = (data.nodes as unknown as WorkflowNode[]) || [];
+        const loadedEdges = (data.edges as unknown as Edge[]) || [];
+        const validated = validateAndAutoCompleteWorkflow(loadedNodes, loadedEdges);
+        
+        setNodes(validated.nodes);
+        setEdges(validated.edges);
+        setIsDirty(validated.workflowStatus === 'auto_fixed');
+        
+        // Show notification if workflow was auto-fixed
+        if (validated.workflowStatus === 'auto_fixed') {
+          const addedNodesMsg = validated.validationResult.addedNodes.length > 0
+            ? `Added ${validated.validationResult.addedNodes.length} node(s). `
+            : '';
+          const fixedNodesMsg = validated.validationResult.fixedNodes.length > 0
+            ? `Fixed ${validated.validationResult.fixedNodes.length} node(s). `
+            : '';
+          
+          toast({
+            title: 'Workflow Validated',
+            description: `${addedNodesMsg}${fixedNodesMsg}Workflow has been auto-completed.`,
+            variant: 'default',
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading workflow:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load workflow',
-        variant: 'destructive',
-      });
+      
+      // Auto-heal workflow on error
+      try {
+        const healed = handleWorkflowError(
+          'Load workflow',
+          { nodes: (data?.nodes as unknown as WorkflowNode[]) || [], edges: (data?.edges as unknown as Edge[]) || [] },
+          error as Error
+        );
+        
+        setNodes(healed.nodes);
+        setEdges(healed.edges);
+        setIsDirty(true);
+        
+        toast({
+          title: 'Workflow Auto-Healed',
+          description: `Fixed ${healed.fixes.length} issue(s). Workflow has been repaired.`,
+          variant: 'default',
+        });
+      } catch (healError) {
+        toast({
+          title: 'Error',
+          description: 'Failed to load and heal workflow',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
@@ -78,12 +122,48 @@ export default function WorkflowBuilder() {
 
     setIsSaving(true);
     try {
+      // Validate and auto-complete workflow before saving
+      const validated = validateAndAutoCompleteWorkflow(nodes, edges);
+
+      // Update store with validated nodes and edges if auto-fixed
+      if (validated.workflowStatus === 'auto_fixed') {
+        setNodes(validated.nodes);
+        setEdges(validated.edges);
+
+        // Show notification about auto-fixes
+        const addedNodesMsg = validated.validationResult.addedNodes.length > 0
+          ? `Added ${validated.validationResult.addedNodes.length} node(s): ${validated.validationResult.addedNodes.join(', ')}. `
+          : '';
+        const fixedNodesMsg = validated.validationResult.fixedNodes.length > 0
+          ? `Fixed ${validated.validationResult.fixedNodes.length} node(s). `
+          : '';
+        const warningsMsg = validated.validationResult.warnings.length > 0
+          ? `Warnings: ${validated.validationResult.warnings.length}. `
+          : '';
+
+        toast({
+          title: 'Workflow Auto-Fixed',
+          description: `${addedNodesMsg}${fixedNodesMsg}${warningsMsg}Please review the changes.`,
+          variant: 'default',
+        });
+      }
+
+      // Show errors if validation failed
+      if (validated.validationResult.errors.length > 0) {
+        toast({
+          title: 'Validation Errors',
+          description: validated.validationResult.errors.join('. '),
+          variant: 'destructive',
+        });
+      }
+
       const workflowData = {
         name: useWorkflowStore.getState().workflowName,
-        nodes: nodes as unknown as Json,
-        edges: edges as unknown as Json,
+        nodes: validated.nodes as unknown as Json,
+        edges: validated.edges as unknown as Json,
         user_id: user.id,
         updated_at: new Date().toISOString(),
+        status: validated.workflowStatus === 'auto_fixed' ? 'auto_fixed' : 'draft',
       };
 
       const workflowId = useWorkflowStore.getState().workflowId;
@@ -113,19 +193,71 @@ export default function WorkflowBuilder() {
       setIsDirty(false);
       toast({
         title: 'Saved',
-        description: 'Workflow saved successfully',
+        description: validated.workflowStatus === 'auto_fixed' 
+          ? 'Workflow saved with auto-fixes applied'
+          : 'Workflow saved successfully',
       });
     } catch (error) {
       console.error('Error saving workflow:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save workflow',
-        variant: 'destructive',
-      });
+      
+      // Auto-heal workflow on error
+      try {
+        const healed = handleWorkflowError(
+          useWorkflowStore.getState().workflowName,
+          { nodes, edges },
+          error as Error
+        );
+        
+        setNodes(healed.nodes);
+        setEdges(healed.edges);
+        
+        // Retry save with healed workflow
+        const healedWorkflowData = {
+          name: useWorkflowStore.getState().workflowName,
+          nodes: healed.nodes as unknown as Json,
+          edges: healed.edges as unknown as Json,
+          user_id: user.id,
+          updated_at: new Date().toISOString(),
+          status: 'auto_fixed',
+        };
+
+        const workflowId = useWorkflowStore.getState().workflowId;
+        if (workflowId) {
+          await supabase
+            .from('workflows')
+            .update(healedWorkflowData)
+            .eq('id', workflowId);
+        } else {
+          const { data: newData, error: insertError } = await supabase
+            .from('workflows')
+            .insert(healedWorkflowData)
+            .select()
+            .single();
+
+          if (insertError) throw insertError;
+          if (newData) {
+            setWorkflowId(newData.id);
+            navigate(`/workflow/${newData.id}`, { replace: true });
+          }
+        }
+
+        setIsDirty(false);
+        toast({
+          title: 'Workflow Auto-Healed & Saved',
+          description: `Fixed ${healed.fixes.length} issue(s) and saved successfully.`,
+          variant: 'default',
+        });
+      } catch (healError) {
+        toast({
+          title: 'Error',
+          description: 'Failed to save workflow',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsSaving(false);
     }
-  }, [nodes, edges, user, navigate, setWorkflowId, setIsDirty]);
+  }, [nodes, edges, user, navigate, setWorkflowId, setIsDirty, setNodes, setEdges]);
 
   const handleRun = useCallback(async () => {
     const workflowId = useWorkflowStore.getState().workflowId;
@@ -135,6 +267,61 @@ export default function WorkflowBuilder() {
         title: 'No nodes',
         description: 'Add some nodes to your workflow before running',
         variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate workflow before running
+    const preValidation = validateBeforeExecution({ nodes, edges });
+    
+    if (!preValidation.valid) {
+      // Auto-heal workflow
+      const healed = handleWorkflowError(
+        'Run workflow',
+        { nodes, edges },
+        preValidation.error || 'Workflow validation failed'
+      );
+      
+      setNodes(healed.nodes);
+      setEdges(healed.edges);
+      
+      toast({
+        title: 'Workflow Auto-Healed',
+        description: `Fixed ${healed.fixes.length} issue(s). Please save before running.`,
+        variant: 'default',
+      });
+      return;
+    }
+
+    const validated = validateAndAutoCompleteWorkflow(nodes, edges);
+    
+    if (validated.validationResult.errors.length > 0) {
+      // Auto-heal on validation errors
+      const healed = handleWorkflowError(
+        'Run workflow',
+        { nodes, edges },
+        validated.validationResult.errors.join('. ')
+      );
+      
+      setNodes(healed.nodes);
+      setEdges(healed.edges);
+      
+      toast({
+        title: 'Workflow Auto-Healed',
+        description: `Fixed ${healed.fixes.length} issue(s). Please save before running.`,
+        variant: 'default',
+      });
+      return;
+    }
+
+    // Auto-fix if needed
+    if (validated.workflowStatus === 'auto_fixed') {
+      setNodes(validated.nodes);
+      setEdges(validated.edges);
+      toast({
+        title: 'Workflow Auto-Fixed',
+        description: 'Workflow has been auto-completed. Please save before running.',
+        variant: 'default',
       });
       return;
     }

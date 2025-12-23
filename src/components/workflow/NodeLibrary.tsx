@@ -8,14 +8,21 @@ import {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch, 
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type, 
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
-  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput
+  Filter, Hash, MessageCircle, DatabaseZap, FileOutput,
+  Zap, RefreshCw, Edit, Tag, Scissors, XCircle, Code2, Receipt, Upload, Bell, Users
 } from 'lucide-react';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch,
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
-  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput
+  Filter, Hash, MessageCircle, DatabaseZap, FileOutput,
+  Zap, RefreshCw, Edit, Tag, Scissors, XCircle, Code2, Receipt, Upload, Bell, Users,
+  // Aliases for icon names that might be used
+  Function: Code2,
+  Split: Scissors,
+  Ticket: Receipt,
+  Variable: Hash // Use Hash icon for Variable
 };
 
 interface NodeLibraryProps {
@@ -34,7 +41,9 @@ export default function NodeLibrary({ onDragStart }: NodeLibraryProps) {
     : NODE_TYPES;
 
   const getNodesByCategory = (categoryId: string) =>
-    filteredNodes.filter((node) => node.category === categoryId);
+    filteredNodes
+      .filter((node) => node.category === categoryId)
+      .sort((a, b) => a.label.localeCompare(b.label));
 
   return (
     <div className="w-64 border-r border-border bg-card h-full flex flex-col">
