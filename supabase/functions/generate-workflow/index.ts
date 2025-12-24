@@ -265,6 +265,7 @@ serve(async (req) => {
     const prompt = requestBody.prompt || requestBody.description;
     const mode = requestBody.mode || 'create';
     const currentWorkflow = requestBody.currentWorkflow;
+    const config = requestBody.config || {}; // User provided configuration values
 
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return new Response(
@@ -377,6 +378,11 @@ You must respond with a valid JSON object in this exact format:
   ]
 }
 
+USER PROVIDED CONFIGURATION:
+The user has specifically provided the following configuration values. You MUST use these values in the appropriate node configurations where they make sense.
+${JSON.stringify(config, null, 2)}
+If a value matches a node property (e.g. 'google_sheet_id' for 'spreadsheetId', 'slack_webhook' for 'webhookUrl'), USE IT.
+
 CRITICAL RULES:
 1. Always start with a trigger node (manual_trigger, webhook, schedule, or http_trigger)
 2. Connect nodes in a logical flow from trigger to output - each node should connect to the next
@@ -389,6 +395,7 @@ CRITICAL RULES:
    - For schedule: include cron expression
    - For email: include to, from, subject, body
    - For database: include table name and operation
+   - **IMPORTANT**: Use the USER PROVIDED CONFIGURATION values to populate these fields.
 6. Keep workflows simple and focused - don't overcomplicate
 7. If description mentions AI/LLM/GPT/Claude/Gemini, use appropriate AI node (openai_gpt, anthropic_claude, or google_gemini)
 8. Always end with an output action (http_post, email_resend, slack_message, discord_webhook, database_write, or log_output) if the workflow should produce results
@@ -409,12 +416,12 @@ CRITICAL RULES:
     - Example config for JS node: { "code": "return { mark: 85, student: 'John' };" }
     - Connect: manual_trigger -> javascript -> if_else
     - This ensures the workflow is testable immediately.
-413: 13. SYSTEMATIC DATA STRUCTURE (CRITICAL):
-414:     - The user prefers "Systematic" data flow.
-415:     - Always ensure nodes pass data as structured JSON objects.
-416:     - When fetching properties in downstream nodes (like If/Else), use dot notation: "{{input.age}}", "{{input.name}}".
-417:     - Avoid flat unstructured values; prefer nested objects where logical.
-418: 
+13. SYSTEMATIC DATA STRUCTURE (CRITICAL):
+    - The user prefers "Systematic" data flow.
+    - Always ensure nodes pass data as structured JSON objects.
+    - When fetching properties in downstream nodes (like If/Else), use dot notation: "{{input.age}}", "{{input.name}}".
+    - Avoid flat unstructured values; prefer nested objects where logical.
+
 
 Generate a workflow based on this description. Return ONLY valid JSON, no markdown or explanations:`;
 

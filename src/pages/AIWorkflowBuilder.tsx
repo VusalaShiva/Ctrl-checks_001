@@ -4,12 +4,13 @@ import { useAuth } from '@/lib/auth';
 import { useWorkflowStore, WorkflowNode } from '@/stores/workflowStore';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Sparkles, ArrowLeft, Loader2, Wand2 } from 'lucide-react';
-import { NODE_TYPES, NodeTypeDefinition } from '@/components/workflow/nodeTypes';
+import { Sparkles, ArrowLeft, Loader2, Wand2, Settings2, Check } from 'lucide-react';
+import { NODE_TYPES } from '@/components/workflow/nodeTypes';
 import { Edge } from '@xyflow/react';
 
 interface WorkflowGenerationResponse {
@@ -37,12 +38,25 @@ interface EdgeDataRaw {
   [key: string]: unknown;
 }
 
+interface Requirement {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'select';
+  description?: string;
+  required?: boolean;
+}
+
+type Step = 'prompt' | 'analyzing' | 'config' | 'generating';
+
 export default function AIWorkflowBuilder() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const [prompt, setPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
   const { setNodes, setEdges, setWorkflowName, setWorkflowId, resetWorkflow } = useWorkflowStore();
+
+  const [step, setStep] = useState<Step>('prompt');
+  const [prompt, setPrompt] = useState('');
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [config, setConfig] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -50,7 +64,7 @@ export default function AIWorkflowBuilder() {
     }
   }, [user, authLoading, navigate]);
 
-  const generateWorkflow = async () => {
+  const analyzeRequirements = async () => {
     if (!prompt.trim()) {
       toast({
         title: 'Error',
@@ -60,15 +74,79 @@ export default function AIWorkflowBuilder() {
       return;
     }
 
-    setIsGenerating(true);
+    setStep('analyzing');
     try {
-      // Get the current session to include auth token
       const { data: { session } } = await supabase.auth.getSession();
 
-      // Call Supabase edge function to generate workflow
-      // Use direct fetch to get better error messages
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const functionUrl = `${supabaseUrl}/functions/v1/generate-workflow`;
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-workflow-requirements`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': session ? `Bearer ${session.access_token}` : '',
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+        },
+        body: JSON.stringify({ prompt: prompt.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze requirements');
+      }
+
+      const data = await response.json();
+
+      if (data.requirements && data.requirements.length > 0) {
+        setRequirements(data.requirements);
+        setStep('config');
+      } else {
+        // Even if no requirements, let's show a confirmation or at least not skip silently if the user wants verification. 
+        // But per request "ask for required properties", if none, maybe we should just say "No extra config needed".
+        // However, if the user explicitly wants the flow, let's show the config step but empty? 
+        // Or better: Show a toast and stay on prompt, or just go to config with empty list?
+        // Let's go to config step with empty list so user sees "No requirements found"
+        setRequirements([]);
+        setStep('config');
+
+        toast({
+          title: 'Analysis Complete',
+          description: 'No specific configuration requirements detected.',
+        });
+      }
+    } catch (error) {
+      console.error('Analysis error:', error);
+      // DO NOT auto-generate. Show error to user so they know analysis failed.
+      toast({
+        title: 'Analysis Failed',
+        description: error instanceof Error ? error.message : 'Failed to analyze requirements',
+        variant: 'destructive',
+      });
+      // Allow them to try again or skip manually if we add a "Skip" button later.
+      // For now, staying on 'analyzing' might lock UI, so go back to 'prompt'
+      setStep('prompt');
+    }
+  };
+
+  const extractSheetIdFromUrl = (url: string): string | null => {
+    const regex = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+  };
+
+  const generateWorkflow = async (finalConfig: Record<string, string>) => {
+    setStep('generating');
+
+    // Process config to extract IDs if needed
+    const processedConfig = { ...finalConfig };
+    if (processedConfig['google_sheet_url']) {
+      const extractedId = extractSheetIdFromUrl(processedConfig['google_sheet_url']);
+      if (extractedId) {
+        processedConfig['spreadsheetId'] = extractedId; // Key expected by generate-workflow
+        processedConfig['google_sheet_id'] = extractedId; // Alias
+      }
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-workflow`;
 
       let response: Response;
       let responseData: WorkflowGenerationResponse;
@@ -81,10 +159,12 @@ export default function AIWorkflowBuilder() {
             'Authorization': session ? `Bearer ${session.access_token}` : '',
             'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
           },
-          body: JSON.stringify({ prompt: prompt.trim() }),
+          body: JSON.stringify({
+            prompt: prompt.trim(),
+            config: processedConfig
+          }),
         });
 
-        // Parse response body
         const responseText = await response.text();
         try {
           responseData = JSON.parse(responseText);
@@ -92,53 +172,29 @@ export default function AIWorkflowBuilder() {
           responseData = { error: responseText || 'Invalid response from server' };
         }
 
-        // Check for error status
         if (!response.ok) {
           const errorMessage = responseData?.error
             ? (typeof responseData.error === 'string' ? responseData.error : responseData.error.message)
             : responseData?.message || `Server error: ${response.status}`;
-          console.error('Function error response:', {
-            status: response.status,
-            statusText: response.statusText,
-            body: responseData,
-          });
           throw new Error(errorMessage);
         }
-
-        // Check if response contains error even with 200 status
-        if (responseData?.error) {
-          throw new Error(typeof responseData.error === 'string'
-            ? responseData.error
-            : responseData.error.message || 'Unknown error');
-        }
       } catch (fetchError: unknown) {
-        console.error('Function call failed:', fetchError);
-
-        // If it's already an Error with a message, use it
         if (fetchError instanceof Error && fetchError.message) {
           throw fetchError;
         }
-
-        // Otherwise create a meaningful error
-        throw new Error(fetchError?.message || 'Failed to generate workflow. Please check your connection and try again.');
+        throw new Error('Failed to generate workflow.');
       }
 
       const data = responseData;
 
       if (data && data.nodes && data.edges) {
-        // Reset workflow first
         resetWorkflow();
-
-        // Set workflow name from AI or use default
         const workflowName = data.name || `AI Generated: ${prompt.substring(0, 50)}`;
         setWorkflowName(workflowName);
 
-        // Convert AI response to workflow nodes and edges
         const nodes: WorkflowNode[] = (data.nodes || []).map((nodeData: NodeDataRaw, index: number) => {
           const nodeType = NODE_TYPES.find(nt => nt.type === nodeData.type);
-          if (!nodeType) {
-            throw new Error(`Unknown node type: ${nodeData.type}`);
-          }
+          if (!nodeType) throw new Error(`Unknown node type: ${nodeData.type}`);
 
           return {
             id: nodeData.id || `${nodeData.type}_${Date.now()}_${index}`,
@@ -163,7 +219,6 @@ export default function AIWorkflowBuilder() {
           type: 'smoothstep',
         }));
 
-        // Create workflow in database first
         const workflowData = {
           name: workflowName,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,8 +237,6 @@ export default function AIWorkflowBuilder() {
 
         if (createError) throw createError;
 
-        // Set workflow ID and data in store AFTER creation
-        // This ensures the workflow is available when navigating
         setWorkflowId(workflow.id);
         setNodes(nodes);
         setEdges(edges);
@@ -194,44 +247,26 @@ export default function AIWorkflowBuilder() {
           description: 'Workflow generated successfully!',
         });
 
-        // Navigate to the workflow builder - it will load the workflow from the store
         navigate(`/workflow/${workflow.id}`, { replace: true });
       } else {
         throw new Error('Invalid response from AI service');
       }
     } catch (error: unknown) {
       console.error('Error generating workflow:', error);
-
-      // Extract error message from various error types
       let errorMessage = 'Failed to generate workflow. Please try again.';
-
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'object' && error !== null && 'error' in error) {
-        // Handle nested error object safely
-        const errObj = error as { error: { message: string } };
-        if (errObj.error && typeof errObj.error === 'object' && 'message' in errObj.error) {
-          errorMessage = errObj.error.message;
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-
-      // Check for specific error types
-      if (errorMessage.includes('GEMINI_API_KEY')) {
-        errorMessage = 'Gemini API key is not configured. Please contact support.';
-      } else if (errorMessage.includes('Failed to generate workflow with AI')) {
-        errorMessage = 'AI service error. Please check your API key configuration.';
-      }
+      if (error instanceof Error) errorMessage = error.message;
 
       toast({
         title: 'Error',
         description: errorMessage,
         variant: 'destructive',
       });
-    } finally {
-      setIsGenerating(false);
+      setStep('prompt'); // Go back to start on error
     }
+  };
+
+  const handleConfigChange = (key: string, value: string) => {
+    setConfig(prev => ({ ...prev, [key]: value }));
   };
 
   if (authLoading) {
@@ -244,10 +279,8 @@ export default function AIWorkflowBuilder() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Blurred Background */}
       <div className="absolute inset-0 bg-background/80 backdrop-blur-md" />
 
-      {/* Content */}
       <div className="relative z-10 w-full max-w-3xl px-4 py-6">
         <Button
           variant="ghost"
@@ -258,82 +291,153 @@ export default function AIWorkflowBuilder() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
 
-        <Card className="mb-4">
-          <CardHeader className="pb-4">
+        <Card className="overflow-hidden border-2 shadow-lg">
+          <CardHeader className="bg-muted/30 pb-4">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-                <Sparkles className="h-5 w-5 text-primary" />
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${step === 'config' ? 'bg-secondary/10' : 'bg-primary/10'}`}>
+                {step === 'config' ? (
+                  <Settings2 className="h-5 w-5 text-secondary" />
+                ) : (
+                  <Sparkles className="h-5 w-5 text-primary" />
+                )}
               </div>
               <div>
-                <CardTitle className="text-xl font-semibold">AI Workflow Generator</CardTitle>
+                <CardTitle className="text-xl font-semibold">
+                  {step === 'config' ? 'Configure Workflow' : 'AI Workflow Generator'}
+                </CardTitle>
                 <CardDescription className="text-sm mt-0.5">
-                  Describe your workflow and let AI create it automatically
+                  {step === 'config'
+                    ? 'Please provide the missing details to build your workflow'
+                    : 'Describe your workflow and let AI create it automatically'
+                  }
                 </CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="prompt" className="text-sm font-medium">Workflow Description</Label>
-              <Textarea
-                id="prompt"
-                placeholder="Example: Create a workflow that receives a webhook, processes the data with GPT-4, and sends an email notification..."
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={6}
-                className="resize-none text-sm"
-                disabled={isGenerating}
-              />
-              <p className="text-xs text-muted-foreground">
-                Be specific about triggers, processing steps, and outputs
-              </p>
-            </div>
 
-            <Button
-              onClick={generateWorkflow}
-              disabled={isGenerating || !prompt.trim()}
-              className="w-full gradient-primary text-primary-foreground"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating Workflow...
-                </>
-              ) : (
-                <>
+          <CardContent className="space-y-4 pt-6">
+            {step === 'prompt' || step === 'analyzing' ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="prompt" className="text-sm font-medium">Workflow Description</Label>
+                  <Textarea
+                    id="prompt"
+                    placeholder="Example: Read data from Google Sheet ID 12345 and send a Slack message..."
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={6}
+                    className="resize-none text-sm"
+                    disabled={step === 'analyzing'}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Be specific about triggers, processing steps, and outputs
+                  </p>
+                </div>
+              </div>
+            ) : step === 'config' ? (
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="bg-primary/5 border border-primary/20 rounded-md p-3 mb-4">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">Prompt: </span>
+                    "{prompt}"
+                  </p>
+                </div>
+
+                <div className="grid gap-4 max-h-[400px] overflow-y-auto pr-2">
+                  {requirements.map((req) => (
+                    <div key={req.key} className="space-y-2">
+                      <Label htmlFor={req.key} className="flex items-center gap-1">
+                        {req.label}
+                        {req.required && <span className="text-destructive">*</span>}
+                      </Label>
+                      <Input
+                        id={req.key}
+                        type={req.type === 'number' ? 'number' : 'text'}
+                        placeholder={req.description || `Enter ${req.label}`}
+                        value={config[req.key] || ''}
+                        onChange={(e) => handleConfigChange(req.key, e.target.value)}
+                      />
+                      {req.description && (
+                        <p className="text-xs text-muted-foreground">{req.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <p className="text-lg font-medium">Generating your workflow...</p>
+                <p className="text-sm text-muted-foreground">This may take a few moments</p>
+              </div>
+            )}
+          </CardContent>
+
+          <CardFooter className="bg-muted/10 flex justify-between pt-6">
+            {step === 'config' ? (
+              <>
+                <Button variant="ghost" onClick={() => setStep('prompt')}>
+                  Back to Prompt
+                </Button>
+                <Button
+                  onClick={() => generateWorkflow(config)}
+                  className="gradient-primary text-primary-foreground min-w-[140px]"
+                >
                   <Wand2 className="mr-2 h-4 w-4" />
-                  Generate Workflow
-                </>
-              )}
-            </Button>
-          </CardContent>
+                  Generate
+                </Button>
+              </>
+            ) : step === 'prompt' ? (
+              <div className="w-full flex justify-end">
+                <Button
+                  onClick={analyzeRequirements}
+                  disabled={step === 'analyzing' || !prompt.trim()}
+                  className="gradient-primary text-primary-foreground min-w-[140px]"
+                >
+                  {step === 'analyzing' ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Next
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : null}
+          </CardFooter>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Tips for Best Results</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-1.5 text-xs text-muted-foreground">
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Specify the trigger type (webhook, schedule, manual, etc.)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Describe the data processing steps (AI models, transformations, etc.)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Mention the output actions (email, HTTP POST, Slack, etc.)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Include any conditional logic or branching requirements</span>
-              </li>
-            </ul>
-          </CardContent>
-        </Card>
+        {step === 'prompt' && (
+          <Card className="mt-4 border-l-4 border-l-primary/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">Tips for Best Results</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                <li className="flex items-start gap-2">
+                  <Check className="h-3 w-3 text-primary mt-0.5" />
+                  <span>Specify the trigger type (webhook, schedule, etc.)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-3 w-3 text-primary mt-0.5" />
+                  <span>Mention output actions (email, Slack, etc.)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-3 w-3 text-primary mt-0.5" />
+                  <span>Describe data processing steps clearly</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-3 w-3 text-primary mt-0.5" />
+                  <span>We'll ask for API keys/IDs in the next step!</span>
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
