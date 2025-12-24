@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateAndFixWorkflow } from "./workflow-validation.ts";
 
 // CORS headers (inlined from _shared/cors.ts)
 const corsHeaders = {
@@ -69,10 +70,10 @@ class LLMAdapter {
     // Try v1beta first (supports more models), fallback to v1 if needed
     let apiVersion = 'v1beta';
     let attemptModel = model;
-    
+
     try {
       let url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${attemptModel}:generateContent?key=${apiKey}`;
-      
+
       let response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -99,14 +100,14 @@ class LLMAdapter {
           'gemini-1.5-flash',            // Fallback to 1.5 flash
           'gemini-1.5-pro',              // Fallback to 1.5 pro
         ];
-        
+
         for (const fallbackModel of fallbackModels) {
           if (attemptModel === fallbackModel) continue; // Skip if already tried
-          
+
           console.warn(`Model ${attemptModel} not found, trying fallback: ${fallbackModel}`);
           attemptModel = fallbackModel;
           url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${fallbackModel}:generateContent?key=${apiKey}`;
-          
+
           response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -123,7 +124,7 @@ class LLMAdapter {
               },
             }),
           });
-          
+
           // If this model works, break out of loop
           if (response.ok) {
             console.log(`Successfully using fallback model: ${fallbackModel}`);
@@ -137,7 +138,7 @@ class LLMAdapter {
         console.warn('v1beta API failed, trying v1 API');
         apiVersion = 'v1';
         url = `https://generativelanguage.googleapis.com/v1/models/${attemptModel}:generateContent?key=${apiKey}`;
-        
+
         response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -159,12 +160,12 @@ class LLMAdapter {
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage = `Gemini API error: ${response.status}`;
-        
+
         try {
           const errorJson = JSON.parse(errorText);
           const apiError = errorJson.error || errorJson;
           errorMessage = apiError.message || apiError.error?.message || errorMessage;
-          
+
           // Add more context for 404 errors
           if (response.status === 404) {
             errorMessage = `Model "${attemptModel}" not found in ${apiVersion} API. ${errorMessage}. Please verify your API key has access to Gemini models and check available models.`;
@@ -172,7 +173,7 @@ class LLMAdapter {
         } catch {
           errorMessage += ` - ${errorText}`;
         }
-        
+
         console.error('Gemini API error response:', {
           status: response.status,
           statusText: response.statusText,
@@ -182,12 +183,12 @@ class LLMAdapter {
           apiVersion,
           url,
         });
-        
+
         throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      
+
       const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const usageInfo = data.usageMetadata;
 
@@ -238,7 +239,7 @@ const AVAILABLE_NODES = {
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { 
+    return new Response(null, {
       status: 200,
       headers: {
         ...corsHeaders,
@@ -278,7 +279,7 @@ serve(async (req) => {
     // Get auth token from request (optional for now, but recommended)
     const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
     let user = null;
-    
+
     if (authHeader) {
       try {
         const token = authHeader.replace('Bearer ', '').replace('bearer ', '');
@@ -380,6 +381,21 @@ CRITICAL RULES:
 8. Always end with an output action (http_post, email_resend, slack_message, discord_webhook, database_write, or log_output) if the workflow should produce results
 9. Use proper node IDs: format like "trigger_1", "ai_1", "output_1" etc.
 10. Ensure all edges connect valid node IDs
+11. CRITICAL FOR CONDITIONAL NODES (if_else):
+    - You MUST generate exactly two outgoing edges for every "if_else" node.
+    - One edge MUST have a "true" label (for when condition is met).
+    - One edge MUST have a "false" label (for when condition is not met).
+    - Connect the "true" output to the nodes that should run on success.
+    - Connect the "false" output to the nodes that should run on failure/else.
+    - DO NOT leave either branch empty. If no specific action is needed, connect to a "log_output" node with a message like "Condition false".
+    - Example edge structure:
+      { "id": "e1", "source": "if_1", "target": "action_true", "sourceHandle": "true" }
+      { "id": "e2", "source": "if_1", "target": "log_false", "sourceHandle": "false" }
+12. IMPORTANT: If the workflow starts with a "manual_trigger" but requires data for validation (like in "check if mark > 50"):
+    - You MUST add a "javascript" node immediately after the trigger to define mock data.
+    - Example config for JS node: { "code": "return { mark: 85, student: 'John' };" }
+    - Connect: manual_trigger -> javascript -> if_else
+    - This ensures the workflow is testable immediately.
 
 Generate a workflow based on this description. Return ONLY valid JSON, no markdown or explanations:`;
 
@@ -389,8 +405,8 @@ Generate a workflow based on this description. Return ONLY valid JSON, no markdo
     if (!apiKey) {
       console.error('GEMINI_API_KEY not found in environment variables');
       return new Response(
-        JSON.stringify({ 
-          error: 'GEMINI_API_KEY is not configured. Please set it in Supabase project settings under Edge Functions secrets.' 
+        JSON.stringify({
+          error: 'GEMINI_API_KEY is not configured. Please set it in Supabase project settings under Edge Functions secrets.'
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -430,7 +446,7 @@ Generate a workflow based on this description. Return ONLY valid JSON, no markdo
       } else if (jsonText.includes('```')) {
         jsonText = jsonText.split('```')[1].split('```')[0].trim();
       }
-      
+
       workflowData = JSON.parse(jsonText);
     } catch (parseError) {
       console.error('Failed to parse AI response:', response.content);
@@ -487,12 +503,12 @@ Generate a workflow based on this description. Return ONLY valid JSON, no markdo
 
     // Validate edges reference existing nodes
     const validNodeIds = new Set(workflowData.nodes.map((n: any) => n.id));
-    workflowData.edges = workflowData.edges.filter((edge: any) => 
+    workflowData.edges = workflowData.edges.filter((edge: any) =>
       validNodeIds.has(edge.source) && validNodeIds.has(edge.target)
     );
 
     // Ensure at least one trigger node exists
-    const hasTrigger = workflowData.nodes.some((node: any) => 
+    const hasTrigger = workflowData.nodes.some((node: any) =>
       AVAILABLE_NODES.triggers.includes(node.type)
     );
 
@@ -506,7 +522,7 @@ Generate a workflow based on this description. Return ONLY valid JSON, no markdo
       });
 
       // Connect trigger to first non-trigger node
-      const firstNonTrigger = workflowData.nodes.find((n: any) => 
+      const firstNonTrigger = workflowData.nodes.find((n: any) =>
         !AVAILABLE_NODES.triggers.includes(n.type) && n.id !== 'trigger_manual'
       );
       if (firstNonTrigger) {
@@ -518,9 +534,12 @@ Generate a workflow based on this description. Return ONLY valid JSON, no markdo
       }
     }
 
+    // Validate and fix workflow structure (Strict If/Else rules)
+    const validatedWorkflow = validateAndFixWorkflow(workflowData);
+
     return new Response(
-      JSON.stringify(workflowData),
-      { 
+      JSON.stringify(validatedWorkflow),
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
@@ -529,22 +548,22 @@ Generate a workflow based on this description. Return ONLY valid JSON, no markdo
     console.error('Error generating workflow:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
-    
+
     // Log full error details for debugging
     console.error('Full error details:', {
       message: errorMessage,
       stack: errorStack,
       error: error,
     });
-    
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: errorMessage,
         details: Deno.env.get('ENVIRONMENT') === 'development' ? errorStack : undefined
       }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

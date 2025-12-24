@@ -12,6 +12,31 @@ import { Sparkles, ArrowLeft, Loader2, Wand2 } from 'lucide-react';
 import { NODE_TYPES, NodeTypeDefinition } from '@/components/workflow/nodeTypes';
 import { Edge } from '@xyflow/react';
 
+interface WorkflowGenerationResponse {
+  name?: string;
+  nodes?: NodeDataRaw[];
+  edges?: EdgeDataRaw[];
+  error?: string | { message: string };
+  message?: string;
+}
+
+interface NodeDataRaw {
+  id?: string;
+  type: string;
+  position?: { x: number; y: number };
+  config?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface EdgeDataRaw {
+  id?: string;
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+  [key: string]: unknown;
+}
+
 export default function AIWorkflowBuilder() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -39,15 +64,15 @@ export default function AIWorkflowBuilder() {
     try {
       // Get the current session to include auth token
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       // Call Supabase edge function to generate workflow
       // Use direct fetch to get better error messages
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const functionUrl = `${supabaseUrl}/functions/v1/generate-workflow`;
-      
+
       let response: Response;
-      let responseData: any;
-      
+      let responseData: WorkflowGenerationResponse;
+
       try {
         response = await fetch(functionUrl, {
           method: 'POST',
@@ -69,7 +94,9 @@ export default function AIWorkflowBuilder() {
 
         // Check for error status
         if (!response.ok) {
-          const errorMessage = responseData?.error || responseData?.message || `Server error: ${response.status}`;
+          const errorMessage = responseData?.error
+            ? (typeof responseData.error === 'string' ? responseData.error : responseData.error.message)
+            : responseData?.message || `Server error: ${response.status}`;
           console.error('Function error response:', {
             status: response.status,
             statusText: response.statusText,
@@ -80,22 +107,22 @@ export default function AIWorkflowBuilder() {
 
         // Check if response contains error even with 200 status
         if (responseData?.error) {
-          throw new Error(typeof responseData.error === 'string' 
-            ? responseData.error 
+          throw new Error(typeof responseData.error === 'string'
+            ? responseData.error
             : responseData.error.message || 'Unknown error');
         }
-      } catch (fetchError: any) {
+      } catch (fetchError: unknown) {
         console.error('Function call failed:', fetchError);
-        
+
         // If it's already an Error with a message, use it
         if (fetchError instanceof Error && fetchError.message) {
           throw fetchError;
         }
-        
+
         // Otherwise create a meaningful error
         throw new Error(fetchError?.message || 'Failed to generate workflow. Please check your connection and try again.');
       }
-      
+
       const data = responseData;
 
       if (data && data.nodes && data.edges) {
@@ -107,7 +134,7 @@ export default function AIWorkflowBuilder() {
         setWorkflowName(workflowName);
 
         // Convert AI response to workflow nodes and edges
-        const nodes: WorkflowNode[] = data.nodes.map((nodeData: any, index: number) => {
+        const nodes: WorkflowNode[] = (data.nodes || []).map((nodeData: NodeDataRaw, index: number) => {
           const nodeType = NODE_TYPES.find(nt => nt.type === nodeData.type);
           if (!nodeType) {
             throw new Error(`Unknown node type: ${nodeData.type}`);
@@ -127,17 +154,21 @@ export default function AIWorkflowBuilder() {
           };
         });
 
-        const edges: Edge[] = data.edges.map((edgeData: any) => ({
+        const edges: Edge[] = (data.edges || []).map((edgeData: EdgeDataRaw) => ({
           id: edgeData.id || `edge_${edgeData.source}_${edgeData.target}`,
           source: edgeData.source,
           target: edgeData.target,
+          sourceHandle: edgeData.sourceHandle,
+          targetHandle: edgeData.targetHandle,
           type: 'smoothstep',
         }));
 
         // Create workflow in database first
         const workflowData = {
           name: workflowName,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           nodes: nodes as unknown as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           edges: edges as unknown as any,
           user_id: user?.id,
           updated_at: new Date().toISOString(),
@@ -168,27 +199,31 @@ export default function AIWorkflowBuilder() {
       } else {
         throw new Error('Invalid response from AI service');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error generating workflow:', error);
-      
+
       // Extract error message from various error types
       let errorMessage = 'Failed to generate workflow. Please try again.';
-      
-      if (error?.message) {
+
+      if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (error?.error?.message) {
-        errorMessage = error.error.message;
+      } else if (typeof error === 'object' && error !== null && 'error' in error) {
+        // Handle nested error object safely
+        const errObj = error as { error: { message: string } };
+        if (errObj.error && typeof errObj.error === 'object' && 'message' in errObj.error) {
+          errorMessage = errObj.error.message;
+        }
       } else if (typeof error === 'string') {
         errorMessage = error;
       }
-      
+
       // Check for specific error types
       if (errorMessage.includes('GEMINI_API_KEY')) {
         errorMessage = 'Gemini API key is not configured. Please contact support.';
       } else if (errorMessage.includes('Failed to generate workflow with AI')) {
         errorMessage = 'AI service error. Please check your API key configuration.';
       }
-      
+
       toast({
         title: 'Error',
         description: errorMessage,
@@ -211,7 +246,7 @@ export default function AIWorkflowBuilder() {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Blurred Background */}
       <div className="absolute inset-0 bg-background/80 backdrop-blur-md" />
-      
+
       {/* Content */}
       <div className="relative z-10 w-full max-w-3xl px-4 py-6">
         <Button
