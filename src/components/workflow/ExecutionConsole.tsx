@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkflowStore } from '@/stores/workflowStore';
-import { 
-  CheckCircle, XCircle, Loader2, Clock, ChevronDown, ChevronUp, 
-  Terminal, RefreshCw, Trash2 
+import {
+  CheckCircle, XCircle, Loader2, Clock, ChevronDown, ChevronUp,
+  Terminal, RefreshCw, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,14 +29,14 @@ interface ExecutionConsoleProps {
 }
 
 export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionConsoleProps) {
-  const { workflowId } = useWorkflowStore();
+  const { workflowId, updateNodeStatus, resetWorkflow } = useWorkflowStore();
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
 
   const loadExecutions = async () => {
     if (!workflowId) return;
-    
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -91,7 +91,7 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
         },
         (payload) => {
           console.log('Realtime execution update:', payload);
-          
+
           if (payload.eventType === 'INSERT') {
             const newExecution = payload.new as Execution;
             setExecutions(prev => [newExecution, ...prev.slice(0, 9)]);
@@ -100,7 +100,7 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
             // Auto-expand console if collapsed (triggered from parent)
           } else if (payload.eventType === 'UPDATE') {
             const updatedExecution = payload.new as Execution;
-            setExecutions(prev => 
+            setExecutions(prev =>
               prev.map(exec => exec.id === updatedExecution.id ? updatedExecution : exec)
             );
             // Always update selected execution if it's the one being updated
@@ -119,6 +119,31 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
       supabase.removeChannel(channel);
     };
   }, [workflowId, selectedExecution?.id]);
+
+  // Sync execution status with canvas nodes
+  useEffect(() => {
+    if (!selectedExecution?.logs || !Array.isArray(selectedExecution.logs)) return;
+
+    const logs = selectedExecution.logs as any[];
+
+    logs.forEach(log => {
+      if (log.nodeId && log.status) {
+        // Map log status to node status
+        // Log statuses: 'running', 'success', 'failed', 'pending'
+        // Node statuses: 'idle', 'running', 'success', 'error'
+        let nodeStatus: 'idle' | 'running' | 'success' | 'error' = 'idle';
+
+        switch (log.status) {
+          case 'running': nodeStatus = 'running'; break;
+          case 'success': nodeStatus = 'success'; break;
+          case 'failed': nodeStatus = 'error'; break;
+          default: nodeStatus = 'idle'; break;
+        }
+
+        updateNodeStatus(log.nodeId, nodeStatus);
+      }
+    });
+  }, [selectedExecution, updateNodeStatus]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -152,31 +177,31 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
           const nodeName = log.nodeName || log.nodeId || `Node ${i + 1}`;
           const status = log.status || 'unknown';
           const statusIcon = status === 'success' ? '✓' : status === 'failed' ? '✗' : status === 'running' ? '⟳' : '○';
-          
+
           let logText = `\n${'='.repeat(60)}\n`;
           logText += `${statusIcon} [${i + 1}] ${nodeName} (${status})\n`;
           logText += `${'-'.repeat(60)}\n`;
-          
+
           if (log.startedAt) {
             logText += `Started: ${new Date(log.startedAt).toLocaleTimeString()}\n`;
           }
-          
+
           if (log.input !== undefined) {
             logText += `\n📥 INPUT:\n${JSON.stringify(log.input, null, 2)}\n`;
           }
-          
+
           if (log.output !== undefined && log.output !== null) {
             logText += `\n📤 OUTPUT:\n${JSON.stringify(log.output, null, 2)}\n`;
           } else if (log.status === 'success') {
             logText += `\n📤 OUTPUT: (null or empty)\n`;
           }
-          
+
           if (log.error) {
             logText += `\n❌ ERROR:\n${log.error}\n`;
           }
-          
+
           if (log.finishedAt) {
-            const duration = log.startedAt && log.finishedAt 
+            const duration = log.startedAt && log.finishedAt
               ? new Date(log.finishedAt).getTime() - new Date(log.startedAt).getTime()
               : null;
             logText += `\nFinished: ${new Date(log.finishedAt).toLocaleTimeString()}`;
@@ -185,7 +210,7 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
             }
             logText += '\n';
           }
-          
+
           return logText;
         }
         return `[${i + 1}] ${JSON.stringify(log, null, 2)}`;
@@ -200,7 +225,7 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
       isExpanded ? "h-96" : "h-10"
     )}>
       {/* Console Header */}
-      <div 
+      <div
         className="h-10 px-4 flex items-center justify-between cursor-pointer hover:bg-muted/50"
         onClick={onToggle}
       >
@@ -253,8 +278,8 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
                       key={exec.id}
                       className={cn(
                         "p-2 rounded-md cursor-pointer text-xs transition-colors",
-                        selectedExecution?.id === exec.id 
-                          ? "bg-primary/10 border border-primary/20" 
+                        selectedExecution?.id === exec.id
+                          ? "bg-primary/10 border border-primary/20"
                           : "hover:bg-muted"
                       )}
                       onClick={() => setSelectedExecution(exec)}
@@ -322,12 +347,12 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
                     </pre>
                   </div>
 
-                    <div>
+                  <div>
                     <div className="text-xs font-medium text-muted-foreground mb-2">Final Output</div>
                     <pre className="p-3 rounded-md bg-muted/50 text-xs font-mono whitespace-pre-wrap border border-border">
                       {selectedExecution.output ? JSON.stringify(selectedExecution.output, null, 2) : 'null (no output generated)'}
-                      </pre>
-                    </div>
+                    </pre>
+                  </div>
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
