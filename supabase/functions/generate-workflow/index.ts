@@ -261,11 +261,21 @@ serve(async (req) => {
     }
 
     // Accept both 'prompt' and 'description' for compatibility
+    // Also accept 'mode' ('create' | 'edit') and 'currentWorkflow'
     const prompt = requestBody.prompt || requestBody.description;
+    const mode = requestBody.mode || 'create';
+    const currentWorkflow = requestBody.currentWorkflow;
 
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return new Response(
-        JSON.stringify({ error: 'description is required and must be a non-empty string' }),
+        JSON.stringify({ error: 'Prompt is required and must be a non-empty string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (mode === 'edit' && !currentWorkflow) {
+      return new Response(
+        JSON.stringify({ error: 'currentWorkflow is required for edit mode' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -339,8 +349,11 @@ OUTPUT ACTIONS:
 - log_output: Log data for debugging (config: message, level: info/warn/error/debug)
 `;
 
-    // Build system prompt for workflow generation
-    const systemPrompt = `You are an expert workflow automation assistant. Your task is to analyze a user's workflow description and generate a structured workflow with nodes and edges using ONLY the available node types listed below.
+    // Build system prompt based on mode
+    let systemPrompt = '';
+
+    if (mode === 'create') {
+      systemPrompt = `You are an expert workflow automation assistant. Your task is to analyze a user's workflow description and generate a structured workflow with nodes and edges using ONLY the available node types listed below.
 
 ${nodeDescriptions}
 
@@ -396,8 +409,74 @@ CRITICAL RULES:
     - Example config for JS node: { "code": "return { mark: 85, student: 'John' };" }
     - Connect: manual_trigger -> javascript -> if_else
     - This ensures the workflow is testable immediately.
+413: 13. SYSTEMATIC DATA STRUCTURE (CRITICAL):
+414:     - The user prefers "Systematic" data flow.
+415:     - Always ensure nodes pass data as structured JSON objects.
+416:     - When fetching properties in downstream nodes (like If/Else), use dot notation: "{{input.age}}", "{{input.name}}".
+417:     - Avoid flat unstructured values; prefer nested objects where logical.
+418: 
 
 Generate a workflow based on this description. Return ONLY valid JSON, no markdown or explanations:`;
+
+    } else if (mode === 'edit') {
+      const currentWorkflowJson = JSON.stringify(currentWorkflow, null, 2);
+      systemPrompt = `Role: You are an embedded AI workflow editor assistant that lives inside the workflow builder page.
+You fully understand the current workflow graph, including Nodes, Connections, Conditions, Execution order, and Node states.
+You can modify the existing workflow in real time based on user instructions.
+
+🧠 Context Awareness (MANDATORY)
+Before making any change, you must:
+1. Read the current workflow structure provided below.
+2. Identify Node types, Node IDs, Connections (edges), and Conditional paths.
+3. Confirm how the workflow currently behaves.
+❗ Never assume an empty workflow.
+
+✏️ Editing Rules (CRITICAL)
+Safe Editing:
+- Modify only what the user asks.
+- Preserve all unrelated nodes and connections.
+- Prefer rewiring connections instead of deleting nodes.
+- Never recreate the whole workflow unless explicitly requested.
+
+IF / ELSE Handling:
+- Always maintain Separate TRUE and FALSE outputs.
+- Exclusive execution.
+- If user requests a change that breaks logic: Auto-correct and explain briefly.
+
+Allowed Operations:
+- Add nodes (Use ONLY available types: ${Object.values(AVAILABLE_NODES).flat().join(', ')})
+- Remove connections
+- Rewire paths
+- Update node configurations
+- Rename nodes
+- Change conditions
+
+You may NOT:
+- Delete nodes silently
+- Break execution flow
+- Merge conditional branches incorrectly
+
+🛑 Forbidden Behavior
+❌ Do not regenerate the entire workflow (keep existing IDs for unchanged nodes)
+❌ Do not ignore current workflow context
+❌ Do not ask the user to recreate nodes
+❌ Do not apply destructive edits without confirmation
+
+Response Format (IMPORTANT):
+Return a valid JSON object containing the UPDATED workflow structure (full nodes and edges lists) and a brief explanation.
+{
+  "nodes": [ ... ],
+  "edges": [ ... ],
+  "explanation": "Brief interaction summary (e.g., 'Added Slack node and connected to success path')"
+}
+
+Current Workflow:
+${currentWorkflowJson}
+
+User Instruction: "${prompt}"
+
+Generate the updated workflow JSON. Return ONLY valid JSON, no markdown or explanations outside the JSON object.`;
+    }
 
     // Use Google Gemini (free version) to generate workflow
     const llmAdapter = new LLMAdapter();

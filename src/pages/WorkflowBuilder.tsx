@@ -12,6 +12,7 @@ import PropertiesPanel from '@/components/workflow/PropertiesPanel';
 import ExecutionConsole from '@/components/workflow/ExecutionConsole';
 import { Edge } from '@xyflow/react';
 import { Json } from '@/integrations/supabase/types';
+import AIAssistant from '@/components/workflow/AIAssistant';
 
 export default function WorkflowBuilder() {
   const { id } = useParams();
@@ -20,6 +21,7 @@ export default function WorkflowBuilder() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [consoleExpanded, setConsoleExpanded] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const {
     nodes,
     edges,
@@ -129,7 +131,7 @@ export default function WorkflowBuilder() {
 
   const handleRun = useCallback(async () => {
     const workflowId = useWorkflowStore.getState().workflowId;
-    
+
     if (nodes.length === 0) {
       toast({
         title: 'No nodes',
@@ -153,7 +155,7 @@ export default function WorkflowBuilder() {
     if (!consoleExpanded) {
       setConsoleExpanded(true);
     }
-    
+
     toast({
       title: 'Running workflow',
       description: 'Execution started...',
@@ -168,8 +170,8 @@ export default function WorkflowBuilder() {
 
       toast({
         title: data.status === 'success' ? 'Execution complete' : 'Execution failed',
-        description: data.status === 'success' 
-          ? `Completed in ${data.durationMs}ms` 
+        description: data.status === 'success'
+          ? `Completed in ${data.durationMs}ms`
           : data.error || 'Unknown error',
         variant: data.status === 'success' ? 'default' : 'destructive',
       });
@@ -211,16 +213,19 @@ export default function WorkflowBuilder() {
         onRun={handleRun}
         isSaving={isSaving}
         isRunning={isRunning}
+        showAI={showAI}
+        onToggleAI={() => setShowAI(!showAI)}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 flex overflow-hidden">
           <NodeLibrary onDragStart={onDragStart} />
           <WorkflowCanvas />
           <PropertiesPanel />
+          <AIAssistant isOpen={showAI} onClose={() => setShowAI(false)} />
         </div>
-        <ExecutionConsole 
-          isExpanded={consoleExpanded} 
-          onToggle={() => setConsoleExpanded(!consoleExpanded)} 
+        <ExecutionConsole
+          isExpanded={consoleExpanded}
+          onToggle={() => setConsoleExpanded(!consoleExpanded)}
         />
       </div>
     </div>

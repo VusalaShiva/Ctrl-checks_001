@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -7,6 +7,8 @@ import {
   ReactFlowProvider,
   useReactFlow,
   Node,
+  Edge,
+  Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useWorkflowStore, NodeData } from '@/stores/workflowStore';
@@ -20,7 +22,76 @@ const nodeTypes = {
 function WorkflowCanvasInner() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, selectNode } = useWorkflowStore();
+  const {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onReconnect,
+    addNode,
+    selectNode,
+    selectEdge,
+    deleteSelectedNode,
+    deleteSelectedEdge,
+    undo,
+    redo,
+    copySelectedNode,
+    pasteNode,
+    selectAll,
+    selectedNode,
+    selectedEdge
+  } = useWorkflowStore();
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore if input/textarea is focused
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement ||
+        event.target instanceof HTMLDivElement && event.target.contentEditable === 'true'
+      ) {
+        return;
+      }
+
+      // Delete
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectedNode) deleteSelectedNode();
+        if (selectedEdge) deleteSelectedEdge();
+      }
+
+      // Ctrl/Cmd Shortcuts
+      if (event.ctrlKey || event.metaKey) {
+        switch (event.key.toLowerCase()) {
+          case 'z':
+            event.preventDefault();
+            undo();
+            break;
+          case 'y':
+            event.preventDefault();
+            redo();
+            break;
+          case 'c':
+            event.preventDefault();
+            copySelectedNode();
+            break;
+          case 'v':
+            event.preventDefault();
+            pasteNode();
+            break;
+          case 'a':
+            event.preventDefault();
+            selectAll();
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNode, selectedEdge, deleteSelectedNode, deleteSelectedEdge, undo, redo, copySelectedNode, pasteNode, selectAll]);
+
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -65,6 +136,13 @@ function WorkflowCanvasInner() {
     [selectNode]
   );
 
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      selectEdge(edge);
+    },
+    [selectEdge]
+  );
+
   const onPaneClick = useCallback(() => {
     selectNode(null);
   }, [selectNode]);
@@ -77,9 +155,11 @@ function WorkflowCanvasInner() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onReconnect={onReconnect}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         fitView
