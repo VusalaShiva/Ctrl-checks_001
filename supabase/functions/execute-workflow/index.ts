@@ -47,7 +47,7 @@ interface ExecutionLog {
   error?: string;
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -902,8 +902,16 @@ async function executeNode(
       messages.push({ role: "user", content: userMessage });
 
       // Use LLM Adapter for unified interface
+      const llmAdapterInstance = new LLMAdapter();
+      // Detect provider based on model, with fallback based on node type
+      let providerKey = LLMAdapter.detectProvider(model);
+
+      // Override if specific node type implies a provider
+      if (type === 'anthropic_claude') providerKey = 'claude';
+      else if (type === 'openai_gpt') providerKey = 'openai';
+
       try {
-        const response = await llmAdapter.chat(provider, messages, {
+        const response = await llmAdapterInstance.chat(providerKey, messages, {
           model,
           temperature,
           apiKey: finalApiKey,
@@ -1618,33 +1626,70 @@ async function executeNode(
         }
       }
 
-      // Execute Google Sheets operation
-      const result = await executeGoogleSheetsOperation({
-        spreadsheetId,
-        sheetName,
-        range,
-        operation: operation as 'read' | 'write' | 'append' | 'update',
-        outputFormat: outputFormat as 'json' | 'keyvalue' | 'text',
-        readDirection: readDirection as 'rows' | 'columns',
-        data: writeData,
-        accessToken,
-      });
+      // Split sheet names if comma-separated
+      const sheetNames = (sheetName || 'Sheet1').split(',').map(s => s.trim()).filter(s => s);
+      const results: any[] = [];
+      let consolidatedSuccess = true;
+      let consolidatedError = '';
 
-      if (!result.success) {
-        throw new Error(result.error || 'Google Sheets operation failed');
+      // Execute for each sheet
+      for (const sheet of sheetNames) {
+        // Execute Google Sheets operation
+        const result = await executeGoogleSheetsOperation({
+          spreadsheetId,
+          sheetName: sheet,
+          range,
+          operation: operation as 'read' | 'write' | 'append' | 'update',
+          outputFormat: outputFormat as 'json' | 'keyvalue' | 'text',
+          readDirection: readDirection as 'rows' | 'columns',
+          data: writeData,
+          accessToken,
+        });
+
+        if (!result.success) {
+          consolidatedSuccess = false;
+          consolidatedError = result.error || 'Google Sheets operation failed';
+        }
+
+        results.push({
+          sheetName: sheet,
+          success: result.success,
+          data: result.data,
+          rows: result.rows,
+          columns: result.columns,
+          error: result.error
+        });
       }
 
-      // Return formatted result
-      return {
-        data: result.data,
-        rows: result.rows,
-        columns: result.columns,
-        operation,
-        spreadsheetId,
-        sheetName: sheetName || 'Sheet1',
-        range: range || 'All',
-        formatted: outputFormat,
-      };
+      if (!consolidatedSuccess && sheetNames.length === 1) {
+        throw new Error(consolidatedError);
+      }
+
+      // Return formatted result (consolidated if multiple sheets)
+      if (sheetNames.length === 1) {
+        const singleResult = results[0];
+        return {
+          data: singleResult.data,
+          rows: singleResult.rows,
+          columns: singleResult.columns,
+          operation,
+          spreadsheetId,
+          sheetName: singleResult.sheetName,
+          range: range || 'All',
+          formatted: outputFormat,
+        };
+      } else {
+        // Multiple sheets result
+        return {
+          operation,
+          spreadsheetId,
+          sheets: results.reduce((acc, res) => ({ ...acc, [res.sheetName]: res.data }), {}),
+          results: results, // Detailed results per sheet
+          count: sheetNames.length,
+          success: consolidatedSuccess,
+          range: range || 'All',
+        };
+      }
     }
 
     case "memory": {

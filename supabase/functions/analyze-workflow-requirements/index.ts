@@ -9,7 +9,7 @@ const corsHeaders = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
-serve(async (req) => {
+serve(async (req: Request) => {
     // Handle CORS
     if (req.method === "OPTIONS") {
         return new Response(null, { headers: corsHeaders });
@@ -38,7 +38,6 @@ serve(async (req) => {
       Your task is to analyze a user's natural language request for a workflow and identify specific configuration values that are required to build it.
       
       Examples:
-      Examples:
       - "Read from Google Sheet" -> Requires: "google_sheet_url" (URL) and "sheet_name" (Tab Name)
       - "Send message to Slack" -> Requires: Slack Webhook URL or Channel ID
       - "Email me everyday" -> Requires: Email Address
@@ -65,29 +64,15 @@ serve(async (req) => {
     `;
 
         const llm = new LLMAdapter();
-        // Try user-requested model first, then fallback to stable
-        let response;
-        try {
-            console.log("Attempting analysis with gemini-2.5-flash");
-            response = await llm.chat(
-                'gemini',
-                [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: prompt }
-                ],
-                { apiKey, model: 'gemini-2.5-flash' }
-            );
-        } catch (e) {
-            console.warn("gemini-2.5-flash failed, falling back to gemini-1.5-flash. Error:", e);
-            response = await llm.chat(
-                'gemini',
-                [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: prompt }
-                ],
-                { apiKey, model: 'gemini-1.5-flash' }
-            );
-        }
+        console.log("Attempting analysis with gemini-2.5-flash");
+        const response = await llm.chat(
+            'gemini',
+            [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: prompt }
+            ],
+            { apiKey, model: 'gemini-2.5-flash' }
+        );
 
         let result;
         try {
@@ -112,8 +97,9 @@ serve(async (req) => {
 
     } catch (error) {
         console.error('Error:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: errorMessage }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }

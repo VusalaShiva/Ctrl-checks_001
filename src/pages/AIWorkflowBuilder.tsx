@@ -12,6 +12,13 @@ import { Label } from '@/components/ui/label';
 import { Sparkles, ArrowLeft, Loader2, Wand2, Settings2, Check } from 'lucide-react';
 import { NODE_TYPES } from '@/components/workflow/nodeTypes';
 import { Edge } from '@xyflow/react';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 interface WorkflowGenerationResponse {
   name?: string;
@@ -46,6 +53,52 @@ interface Requirement {
   required?: boolean;
 }
 
+const HELP_TOPICS: Record<string, { title: string; steps: string[]; linkLabel: string }> = {
+  sheet_url: {
+    title: "How to get Google Sheet URL",
+    linkLabel: "Sheet URL",
+    steps: [
+      "Open your Google Sheet.",
+      "Copy the full URL from the browser address bar.",
+      "Make sure the sheet is accessible (e.g. valid permissions).",
+      "Paste the URL into the input field."
+    ]
+  },
+  sheet_name: {
+    title: "How to get Sheet Name",
+    linkLabel: "Sheet Name",
+    steps: [
+      "Open your Google Sheet.",
+      "Look at the tabs at the bottom of the screen.",
+      "The name is on the tab (e.g., 'Sheet1', 'Data').",
+      "For multiple sheets, separate names with commas (e.g. 'Sheet1, Sheet2').",
+      "Copy the exact name(s) and paste here."
+    ]
+  },
+  slack: {
+    title: "How to get Slack Webhook URL",
+    linkLabel: "Webhook URL",
+    steps: [
+      "Go to https://api.slack.com/apps.",
+      "Create a new app or select an existing one.",
+      "Click 'Incoming Webhooks' in the sidebar.",
+      "Activate Incoming Webhooks.",
+      "Click 'Add New Webhook to Workspace' and select a channel.",
+      "Copy the Webhook URL."
+    ]
+  },
+  api: {
+    title: "How to get API Details",
+    linkLabel: "API Details",
+    steps: [
+      "Log in to the service provider's developer console.",
+      "Navigate to API Keys or Credentials section.",
+      "Generate or copy the existing API Key/Endpoint.",
+      "Paste it here."
+    ]
+  }
+};
+
 type Step = 'prompt' | 'analyzing' | 'config' | 'generating';
 
 export default function AIWorkflowBuilder() {
@@ -57,6 +110,7 @@ export default function AIWorkflowBuilder() {
   const [prompt, setPrompt] = useState('');
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [config, setConfig] = useState<Record<string, string>>({});
+  const [selectedHelp, setSelectedHelp] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -89,7 +143,8 @@ export default function AIWorkflowBuilder() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to analyze requirements');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to analyze requirements: ${response.status}`);
       }
 
       const data = await response.json();
@@ -353,13 +408,39 @@ export default function AIWorkflowBuilder() {
                       <Input
                         id={req.key}
                         type={req.type === 'number' ? 'number' : 'text'}
-                        placeholder={req.description || `Enter ${req.label}`}
+                        placeholder={
+                          req.key.includes('sheet_name')
+                            ? "Enter sheet names separated by commas (e.g. Sheet1, Sheet2)"
+                            : (req.description || `Enter ${req.label}`)
+                        }
                         value={config[req.key] || ''}
                         onChange={(e) => handleConfigChange(req.key, e.target.value)}
                       />
-                      {req.description && (
-                        <p className="text-xs text-muted-foreground">{req.description}</p>
-                      )}
+                      {Object.keys(HELP_TOPICS).map((helpKey) => {
+                        const isMatch = req.key.toLowerCase().includes(helpKey) || req.label.toLowerCase().includes(helpKey);
+                        // Prevent 'sheet_url' matching 'sheet_name' by checking specific exclusions if needed, 
+                        // but since 'sheet_url' is longer and specific, and 'sheet_name' is specific, we rely on the specific key being present.
+                        // However, 'sheet_url' key has 'sheet' in it? No, key is 'sheet_url'.
+                        // req.key 'google_sheet_url' includes 'sheet_url'.
+                        // req.key 'sheet_name' DOES NOT include 'sheet_url'.
+                        // req.key 'sheet_name' includes 'sheet_name'.
+                        // Ideally we check keys cleanly.
+
+                        if (isMatch) {
+                          return (
+                            <div key={helpKey} className="flex justify-end mt-1">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedHelp(helpKey)}
+                                className="text-xs text-primary hover:underline cursor-pointer flex items-center gap-1"
+                              >
+                                How to get {HELP_TOPICS[helpKey].linkLabel}?
+                              </button>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
                     </div>
                   ))}
                 </div>
@@ -387,7 +468,7 @@ export default function AIWorkflowBuilder() {
                   Generate
                 </Button>
               </>
-            ) : step === 'prompt' ? (
+            ) : step === 'prompt' || step === 'analyzing' ? (
               <div className="w-full flex justify-end">
                 <Button
                   onClick={analyzeRequirements}
@@ -438,6 +519,27 @@ export default function AIWorkflowBuilder() {
             </CardContent>
           </Card>
         )}
+
+        <Sheet open={!!selectedHelp} onOpenChange={(open) => !open && setSelectedHelp(null)}>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>{selectedHelp && HELP_TOPICS[selectedHelp]?.title}</SheetTitle>
+              <SheetDescription>
+                Follow these steps to get the required information.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              {selectedHelp && HELP_TOPICS[selectedHelp]?.steps.map((step, index) => (
+                <div key={index} className="flex gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                    {index + 1}
+                  </div>
+                  <p className="text-sm text-muted-foreground pt-0.5">{step}</p>
+                </div>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );

@@ -155,7 +155,7 @@ async function readFromSheet(config: GoogleSheetsConfig): Promise<GoogleSheetsRe
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `Google Sheets API error: ${response.status}`;
-      
+
       if (response.status === 404) {
         errorMessage = 'Spreadsheet not found. Check the Spreadsheet ID.';
       } else if (response.status === 403) {
@@ -278,7 +278,7 @@ async function writeToSheet(config: GoogleSheetsConfig): Promise<GoogleSheetsRes
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `Google Sheets API error: ${response.status}`;
-      
+
       if (response.status === 404) {
         errorMessage = 'Spreadsheet not found. Check the Spreadsheet ID.';
       } else if (response.status === 403) {
@@ -354,7 +354,7 @@ async function appendToSheet(config: GoogleSheetsConfig): Promise<GoogleSheetsRe
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `Google Sheets API error: ${response.status}`;
-      
+
       if (response.status === 404) {
         errorMessage = 'Spreadsheet not found. Check the Spreadsheet ID.';
       } else if (response.status === 403) {
