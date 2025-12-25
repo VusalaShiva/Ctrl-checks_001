@@ -248,8 +248,13 @@ export default function AIWorkflowBuilder() {
         setWorkflowName(workflowName);
 
         const nodes: WorkflowNode[] = (data.nodes || []).map((nodeData: NodeDataRaw, index: number) => {
-          const nodeType = NODE_TYPES.find(nt => nt.type === nodeData.type);
+          // Backward compatibility: map old 'webhook' to new 'webhook_trigger_response'
+          const nodeTypeId = nodeData.type === 'webhook' ? 'webhook_trigger_response' : nodeData.type;
+          const nodeType = NODE_TYPES.find(nt => nt.type === nodeTypeId);
           if (!nodeType) throw new Error(`Unknown node type: ${nodeData.type}`);
+          
+          // Use the mapped type
+          const finalType = nodeTypeId;
 
           return {
             id: nodeData.id || `${nodeData.type}_${Date.now()}_${index}`,
@@ -257,7 +262,7 @@ export default function AIWorkflowBuilder() {
             position: nodeData.position || { x: 250 + (index % 3) * 300, y: 100 + Math.floor(index / 3) * 150 },
             data: {
               label: nodeType.label,
-              type: nodeData.type,
+              type: finalType,
               category: nodeType.category,
               icon: nodeType.icon,
               config: { ...nodeType.defaultConfig, ...(nodeData.config || {}) },

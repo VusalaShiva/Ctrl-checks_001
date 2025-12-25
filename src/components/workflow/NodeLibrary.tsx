@@ -37,7 +37,7 @@ export default function NodeLibrary({ onDragStart }: NodeLibraryProps) {
     filteredNodes.filter((node) => node.category === categoryId);
 
   return (
-    <div className="w-64 border-r border-border bg-card h-full flex flex-col">
+    <div className="w-72 border-r border-border bg-card h-full flex flex-col">
       <div className="p-4 border-b border-border">
         <h2 className="font-semibold mb-3">Node Library</h2>
         <div className="relative">

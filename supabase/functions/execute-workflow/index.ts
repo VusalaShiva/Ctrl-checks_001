@@ -639,6 +639,7 @@ async function executeNode(
   switch (type) {
     case "manual_trigger":
     case "webhook":
+    case "webhook_trigger_response":
     case "schedule":
     case "http_trigger":
       // For trigger nodes, return the input directly
@@ -769,6 +770,113 @@ async function executeNode(
 
       // If we get here, all retries failed
       throw lastError || new Error(`HTTP Request failed after ${maxRetries + 1} attempts`);
+    }
+
+    case "graphql": {
+      const url = replaceTemplates(config.url as string, input);
+      const query = replaceTemplates(config.query as string, input);
+      const operationName = config.operationName ? replaceTemplates(config.operationName as string, input) : undefined;
+      const variablesStr = config.variables as string;
+      const variables = variablesStr ? JSON.parse(replaceTemplates(variablesStr, input)) : {};
+      const headersStr = config.headers as string;
+      const headers = headersStr ? JSON.parse(replaceTemplates(headersStr, input)) : {};
+      const timeout = (config.timeout as number) || 30000;
+
+      if (!url) {
+        throw new Error("GraphQL endpoint URL is required");
+      }
+      if (!query) {
+        throw new Error("GraphQL query is required");
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const requestBody: Record<string, unknown> = {
+          query,
+        };
+        if (operationName) {
+          requestBody.operationName = operationName;
+        }
+        if (Object.keys(variables).length > 0) {
+          requestBody.variables = variables;
+        }
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        const text = await response.text();
+        const result = JSON.parse(text);
+
+        // Check for GraphQL errors
+        if (result.errors && Array.isArray(result.errors) && result.errors.length > 0) {
+          const errorMessages = result.errors.map((e: any) => e.message || String(e)).join(", ");
+          throw new Error(`GraphQL query failed: ${errorMessages}`);
+        }
+
+        return result.data || result;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        if (errorMessage.includes("aborted") || errorMessage.includes("timeout")) {
+          throw new Error(
+            `GraphQL request timeout: Request took longer than ${timeout}ms\n\n` +
+            `Endpoint: ${url}\n` +
+            `Timeout: ${timeout}ms\n\n` +
+            `Solutions:\n` +
+            `  - Increase timeout in node properties (current: ${timeout}ms)\n` +
+            `  - Check if the GraphQL endpoint is responding\n` +
+            `  - Verify the endpoint URL is correct`
+          );
+        }
+        
+        throw new Error(`GraphQL query failed: ${errorMessage}\n\nEndpoint: ${url}`);
+      }
+    }
+
+    case "respond_to_webhook": {
+      // This node stores the response data that will be returned by the webhook
+      // The response body can be a template string or JSON
+      const statusCode = (config.statusCode as number) || 200;
+      const responseBodyStr = config.responseBody as string;
+      const headersStr = config.headers as string;
+      
+      let responseBody: unknown;
+      if (responseBodyStr) {
+        try {
+          // Try to parse as JSON first
+          responseBody = JSON.parse(replaceTemplates(responseBodyStr, input));
+        } catch {
+          // If not valid JSON, treat as template string
+          responseBody = replaceTemplates(responseBodyStr, input);
+        }
+      } else {
+        // If no response body specified, use the input data
+        responseBody = input;
+      }
+
+      const customHeaders = headersStr ? JSON.parse(replaceTemplates(headersStr, input)) : {};
+
+      // Return response data in a format that webhook-trigger can extract
+      return {
+        _webhook_response: true,
+        statusCode,
+        body: responseBody,
+        headers: customHeaders,
+        // Also include the response in standard format for extraction
+        message: typeof responseBody === 'string' ? responseBody : (responseBody as any)?.message || (responseBody as any)?.text || JSON.stringify(responseBody),
+        text: typeof responseBody === 'string' ? responseBody : (responseBody as any)?.text || JSON.stringify(responseBody),
+        content: typeof responseBody === 'string' ? responseBody : (responseBody as any)?.content || JSON.stringify(responseBody),
+        response: responseBody,
+      };
     }
 
     case "http_post": {
@@ -1807,7 +1915,7 @@ async function executeGeminiNode(
   apiKey: string,
   conversationHistory?: Array<{ role: string; content: string }>
 ): Promise<unknown> {
-  const model = (config.model as string) || "gemini-pro";
+  const model = (config.model as string) || "gemini-2.5-flash";
   const prompt = (config.prompt as string) || "You are a helpful assistant.";
   const temperature = (config.temperature as number) || 0.7;
 

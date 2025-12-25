@@ -10,7 +10,7 @@ import {
   addEdge,
 } from '@xyflow/react';
 
-export type NodeCategory = 'triggers' | 'ai' | 'logic' | 'data' | 'output';
+export type NodeCategory = 'triggers' | 'ai' | 'logic' | 'data' | 'output' | 'http_api';
 
 export interface NodeData {
   label: string;
