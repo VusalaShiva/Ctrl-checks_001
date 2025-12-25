@@ -35,6 +35,7 @@ export const NODE_CATEGORIES: { id: NodeCategory; label: string; color: string }
   { id: 'ai', label: 'AI Processing', color: 'hsl(var(--accent))' },
   { id: 'logic', label: 'Logic & Control', color: 'hsl(var(--secondary))' },
   { id: 'data', label: 'Data Transform', color: 'hsl(142 71% 45%)' },
+  { id: 'http_api', label: 'HTTP & API Nodes', color: 'hsl(221 83% 53%)' },
   { id: 'output', label: 'Output Actions', color: 'hsl(25 95% 53%)' },
 ];
 
@@ -48,21 +49,6 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     description: 'Start workflow manually',
     defaultConfig: {},
     configFields: [],
-  },
-  {
-    type: 'webhook',
-    label: 'Webhook',
-    category: 'triggers',
-    icon: 'Webhook',
-    description: 'Trigger via HTTP webhook',
-    defaultConfig: { method: 'POST' },
-    configFields: [
-      { key: 'method', label: 'Method', type: 'select', options: [
-        { label: 'POST', value: 'POST' },
-        { label: 'GET', value: 'GET' },
-        { label: 'PUT', value: 'PUT' },
-      ]},
-    ],
   },
   {
     type: 'schedule',
@@ -363,27 +349,6 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     ],
   },
   {
-    type: 'http_request',
-    label: 'HTTP Request',
-    category: 'data',
-    icon: 'Globe',
-    description: 'Make HTTP API call',
-    defaultConfig: { method: 'GET', url: '' },
-    configFields: [
-      { key: 'url', label: 'URL', type: 'text', placeholder: 'https://api.example.com/data', required: true },
-      { key: 'method', label: 'Method', type: 'select', options: [
-        { label: 'GET', value: 'GET' },
-        { label: 'POST', value: 'POST' },
-        { label: 'PUT', value: 'PUT' },
-        { label: 'PATCH', value: 'PATCH' },
-        { label: 'DELETE', value: 'DELETE' },
-      ]},
-      { key: 'headers', label: 'Headers (JSON)', type: 'json', placeholder: '{"Authorization": "Bearer token"}' },
-      { key: 'body', label: 'Body (JSON)', type: 'json', placeholder: '{}' },
-      { key: 'timeout', label: 'Timeout (ms)', type: 'number', defaultValue: 30000 },
-    ],
-  },
-  {
     type: 'set_variable',
     label: 'Set Variable',
     category: 'data',
@@ -482,6 +447,74 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
         placeholder: '[["Name", "Email"], ["John", "john@example.com"]]',
         helpText: 'Required for write/append/update operations. Use JSON array format.',
       },
+    ],
+  },
+
+  // HTTP & API Nodes
+  {
+    type: 'http_request',
+    label: 'HTTP Request',
+    category: 'http_api',
+    icon: 'Globe',
+    description: 'Make HTTP API call',
+    defaultConfig: { method: 'GET', url: '' },
+    configFields: [
+      { key: 'url', label: 'URL', type: 'text', placeholder: 'https://api.example.com/data', required: true },
+      { key: 'method', label: 'Method', type: 'select', options: [
+        { label: 'GET', value: 'GET' },
+        { label: 'POST', value: 'POST' },
+        { label: 'PUT', value: 'PUT' },
+        { label: 'PATCH', value: 'PATCH' },
+        { label: 'DELETE', value: 'DELETE' },
+      ]},
+      { key: 'headers', label: 'Headers (JSON)', type: 'json', placeholder: '{"Authorization": "Bearer token"}' },
+      { key: 'body', label: 'Body (JSON)', type: 'json', placeholder: '{}' },
+      { key: 'timeout', label: 'Timeout (ms)', type: 'number', defaultValue: 30000 },
+    ],
+  },
+  {
+    type: 'graphql',
+    label: 'GraphQL',
+    category: 'http_api',
+    icon: 'Braces',
+    description: 'Execute GraphQL query',
+    defaultConfig: { url: '', query: '', operationName: '' },
+    configFields: [
+      { key: 'url', label: 'GraphQL Endpoint', type: 'text', placeholder: 'https://api.example.com/graphql', required: true },
+      { key: 'query', label: 'Query', type: 'textarea', placeholder: 'query { user(id: 1) { name } }', required: true },
+      { key: 'operationName', label: 'Operation Name', type: 'text', placeholder: 'GetUser' },
+      { key: 'variables', label: 'Variables (JSON)', type: 'json', placeholder: '{"id": 1}' },
+      { key: 'headers', label: 'Headers (JSON)', type: 'json', placeholder: '{"Authorization": "Bearer token"}' },
+      { key: 'timeout', label: 'Timeout (ms)', type: 'number', defaultValue: 30000 },
+    ],
+  },
+  {
+    type: 'webhook_trigger_response',
+    label: 'Webhook',
+    category: 'http_api',
+    icon: 'Webhook',
+    description: 'Receive HTTP webhook',
+    defaultConfig: { method: 'POST' },
+    configFields: [
+      { key: 'method', label: 'Method', type: 'select', options: [
+        { label: 'POST', value: 'POST' },
+        { label: 'GET', value: 'GET' },
+        { label: 'PUT', value: 'PUT' },
+        { label: 'DELETE', value: 'DELETE' },
+      ]},
+    ],
+  },
+  {
+    type: 'respond_to_webhook',
+    label: 'Respond to Webhook',
+    category: 'http_api',
+    icon: 'Send',
+    description: 'Send response to webhook caller',
+    defaultConfig: { statusCode: 200, responseBody: '' },
+    configFields: [
+      { key: 'statusCode', label: 'Status Code', type: 'number', defaultValue: 200, required: true },
+      { key: 'responseBody', label: 'Response Body (JSON)', type: 'json', placeholder: '{"message": "success"}' },
+      { key: 'headers', label: 'Custom Headers (JSON)', type: 'json', placeholder: '{"Content-Type": "application/json"}' },
     ],
   },
 

@@ -209,45 +209,79 @@ serve(async (req) => {
     
     // Extract AI response from execution output
     let reply = "";
+    let responseStatusCode = 200;
+    let responseHeaders: Record<string, string> = {};
     
     if (executionResult.status === "success" || dbExecution?.status === "success") {
-      // Try to extract response from different possible locations
-      if (actualOutput) {
-        // If output is a string, use it directly
-        if (typeof actualOutput === "string") {
-          reply = actualOutput;
-        }
-        // If output is an object, look for common fields
-        else if (typeof actualOutput === "object") {
-          reply = actualOutput.text || 
-                  actualOutput.content || 
-                  actualOutput.message ||
-                  actualOutput.response ||
-                  JSON.stringify(actualOutput);
+      // Check if there's a respond_to_webhook node response
+      if (actualOutput && typeof actualOutput === "object" && (actualOutput as any)._webhook_response) {
+        const webhookResponse = actualOutput as any;
+        responseStatusCode = webhookResponse.statusCode || 200;
+        responseHeaders = webhookResponse.headers || {};
+        reply = webhookResponse.message || 
+                webhookResponse.text || 
+                webhookResponse.content ||
+                (typeof webhookResponse.body === 'string' ? webhookResponse.body : JSON.stringify(webhookResponse.body));
+      } else {
+        // Try to extract response from different possible locations
+        if (actualOutput) {
+          // If output is a string, use it directly
+          if (typeof actualOutput === "string") {
+            reply = actualOutput;
+          }
+          // If output is an object, look for common fields
+          else if (typeof actualOutput === "object") {
+            reply = actualOutput.text || 
+                    actualOutput.content || 
+                    actualOutput.message ||
+                    actualOutput.response ||
+                    JSON.stringify(actualOutput);
+          }
         }
       }
       
-      // If no output, check logs for AI node output
+      // If no output, check logs for respond_to_webhook or AI node output
       const logsToCheck = dbExecution?.logs || executionResult.logs || [];
       if (!reply && logsToCheck.length > 0) {
-        console.log("Checking logs for AI output, total logs:", logsToCheck.length);
-        const aiLog = logsToCheck.find((log: any) => 
-          log.nodeName && (
-            log.nodeName.toLowerCase().includes("gpt") ||
-            log.nodeName.toLowerCase().includes("gemini") ||
-            log.nodeName.toLowerCase().includes("claude") ||
-            log.nodeName.toLowerCase().includes("ai")
-          )
+        console.log("Checking logs for respond_to_webhook or AI output, total logs:", logsToCheck.length);
+        
+        // First, check for respond_to_webhook node
+        const respondLog = logsToCheck.find((log: any) => 
+          log.nodeName && log.nodeName.toLowerCase().includes("respond to webhook")
         );
         
-        if (aiLog && aiLog.output) {
-          if (typeof aiLog.output === "string") {
-            reply = aiLog.output;
-          } else if (typeof aiLog.output === "object") {
-            reply = aiLog.output.text || 
-                    aiLog.output.content || 
-                    aiLog.output.message ||
-                    JSON.stringify(aiLog.output);
+        if (respondLog && respondLog.output) {
+          if (typeof respondLog.output === "object" && (respondLog.output as any)._webhook_response) {
+            const webhookResponse = respondLog.output as any;
+            responseStatusCode = webhookResponse.statusCode || 200;
+            responseHeaders = webhookResponse.headers || {};
+            reply = webhookResponse.message || 
+                    webhookResponse.text || 
+                    webhookResponse.content ||
+                    (typeof webhookResponse.body === 'string' ? webhookResponse.body : JSON.stringify(webhookResponse.body));
+          }
+        }
+        
+        // If still no reply, check for AI node output
+        if (!reply) {
+          const aiLog = logsToCheck.find((log: any) => 
+            log.nodeName && (
+              log.nodeName.toLowerCase().includes("gpt") ||
+              log.nodeName.toLowerCase().includes("gemini") ||
+              log.nodeName.toLowerCase().includes("claude") ||
+              log.nodeName.toLowerCase().includes("ai")
+            )
+          );
+          
+          if (aiLog && aiLog.output) {
+            if (typeof aiLog.output === "string") {
+              reply = aiLog.output;
+            } else if (typeof aiLog.output === "object") {
+              reply = aiLog.output.text || 
+                      aiLog.output.content || 
+                      aiLog.output.message ||
+                      JSON.stringify(aiLog.output);
+            }
           }
         }
         
@@ -280,14 +314,21 @@ serve(async (req) => {
     
     console.log("Final reply:", reply);
 
-    // Return response in format expected by test chatbot
+    // Return response with proper status code and headers
     return new Response(
       JSON.stringify({
         success: true,
         reply: reply,
         executionId: execution.id,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { 
+        status: responseStatusCode, 
+        headers: { 
+          ...corsHeaders, 
+          "Content-Type": "application/json",
+          ...responseHeaders 
+        } 
+      }
     );
   } catch (error) {
     console.error("Webhook handler error:", error);

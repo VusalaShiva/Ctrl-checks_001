@@ -229,10 +229,11 @@ class LLMAdapter {
 
 // Available node types for workflow generation
 const AVAILABLE_NODES = {
-  triggers: ['manual_trigger', 'webhook', 'schedule', 'http_trigger'],
+  triggers: ['manual_trigger', 'webhook_trigger_response', 'schedule', 'http_trigger'],
   ai: ['openai_gpt', 'anthropic_claude', 'google_gemini', 'text_summarizer', 'sentiment_analyzer'],
   logic: ['if_else', 'switch', 'loop', 'wait', 'error_handler', 'filter'],
-  data: ['javascript', 'json_parser', 'csv_processor', 'text_formatter', 'merge_data', 'http_request', 'set_variable', 'google_sheets'],
+  data: ['javascript', 'json_parser', 'csv_processor', 'text_formatter', 'merge_data', 'set_variable', 'google_sheets'],
+  http_api: ['http_request', 'graphql', 'webhook_trigger_response', 'respond_to_webhook'],
   output: ['http_post', 'email_resend', 'slack_message', 'slack_webhook', 'discord_webhook', 'database_write', 'log_output'],
 };
 
@@ -308,7 +309,7 @@ serve(async (req) => {
     const nodeDescriptions = `
 TRIGGERS:
 - manual_trigger: Start workflow manually (no config needed)
-- webhook: Trigger via HTTP webhook (config: method: POST/GET/PUT)
+- webhook_trigger_response: Trigger via HTTP webhook and send response (config: method: POST/GET/PUT/DELETE)
 - schedule: Run on a schedule (config: cron expression like "0 9 * * *")
 - http_trigger: Trigger by polling an API (config: url, method, headers, interval)
 
@@ -335,10 +336,15 @@ DATA TRANSFORM:
 - csv_processor: Process CSV data (config: delimiter, hasHeader)
 - text_formatter: Format text with templates (config: template like "Hello {{name}}!")
 - merge_data: Combine multiple inputs (config: mode: merge/concat)
-- http_request: Make HTTP API call (config: url, method: GET/POST/PUT/PATCH/DELETE, headers, body, timeout)
 - set_variable: Store value in variable (config: name, value)
 - google_sheets: Read/write Google Sheets (config: operation: read/write/append/update, spreadsheetId, sheetName, range, outputFormat)
 - database_read: Read from database (config: table, columns, filters, limit, orderBy, ascending)
+
+HTTP & API NODES:
+- http_request: Make HTTP API call (config: url, method: GET/POST/PUT/PATCH/DELETE, headers, body, timeout)
+- graphql: Execute GraphQL query (config: url, query, variables as JSON, headers, operationName, timeout)
+- webhook_trigger_response: Trigger via HTTP webhook and send response (config: method: POST/GET/PUT/DELETE)
+- respond_to_webhook: Send custom response to webhook caller (config: statusCode, responseBody as JSON, headers)
 
 OUTPUT ACTIONS:
 - http_post: Send HTTP POST request (config: url, headers, bodyTemplate)
@@ -384,14 +390,16 @@ ${JSON.stringify(config, null, 2)}
 If a value matches a node property (e.g. 'google_sheet_id' for 'spreadsheetId', 'slack_webhook' for 'webhookUrl'), USE IT.
 
 CRITICAL RULES:
-1. Always start with a trigger node (manual_trigger, webhook, schedule, or http_trigger)
+1. Always start with a trigger node (manual_trigger, webhook_trigger_response, schedule, or http_trigger)
 2. Connect nodes in a logical flow from trigger to output - each node should connect to the next
 3. Position nodes with x spacing of 300px and y spacing of 150px (start at x:250, y:100)
 4. Use ONLY the node types listed above - do not invent new node types
 5. Include ALL necessary configuration for each node:
    - For AI nodes: include prompt, model, temperature (0.7 default), memory (10 default)
-   - For HTTP nodes: include url, method, headers if needed
-   - For webhook: include method (POST default)
+   - For HTTP nodes (http_request): include url, method, headers, body if needed, timeout
+   - For GraphQL nodes: include url, query, variables (JSON), headers, operationName if needed
+   - For webhook_trigger_response: include method (POST default)
+   - For respond_to_webhook: include statusCode (200 default), responseBody (JSON), headers if needed
    - For schedule: include cron expression
    - For email: include to, from, subject, body
    - For database: include table name and operation
