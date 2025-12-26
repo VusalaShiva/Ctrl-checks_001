@@ -248,13 +248,8 @@ const AVAILABLE_NODES = {
   triggers: ['manual_trigger', 'webhook', 'schedule', 'chat_trigger', 'error_trigger', 'interval', 'workflow_trigger'],
   ai: ['openai_gpt', 'anthropic_claude', 'google_gemini', 'text_summarizer', 'sentiment_analyzer'],
   logic: ['if_else', 'switch', 'loop', 'wait', 'error_handler', 'filter'],
-<<<<<<< HEAD
-  data: ['javascript', 'json_parser', 'csv_processor', 'text_formatter', 'merge_data', 'set_variable'],
-  http_api: ['http_request', 'graphql', 'webhook_trigger_response', 'respond_to_webhook'],
-=======
   data: ['javascript', 'json_parser', 'csv_processor', 'text_formatter', 'merge_data', 'set_variable', 'google_sheets'],
   http_api: ['http_request', 'graphql', 'respond_to_webhook'],
->>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
   output: ['http_post', 'email_resend', 'slack_message', 'slack_webhook', 'discord_webhook', 'database_write', 'log_output'],
   google: ['google_sheets', 'google_doc', 'google_drive', 'google_calendar', 'google_gmail', 'google_bigquery', 'google_tasks', 'google_contacts'],
 };
@@ -563,7 +558,7 @@ CRITICAL RULES FOR ERROR-FREE WORKFLOWS:
    - For google_sheets: MUST include operation, spreadsheetId
    - For database_write: MUST include table, operation, data
    - **CRITICAL**: Use the USER PROVIDED CONFIGURATION values to populate these fields. If a config value is missing, use a sensible default or placeholder that the user can update.
-=======
+
 CRITICAL RULES:
 1. Always start with a trigger node (manual_trigger, webhook, schedule, chat_trigger, error_trigger, interval, or workflow_trigger)
 2. Connect nodes in a logical flow from trigger to output - each node should connect to the next
@@ -581,7 +576,6 @@ CRITICAL RULES:
    - For email: include to, from, subject, body
    - For database: include table name and operation
    - **IMPORTANT**: Use the USER PROVIDED CONFIGURATION values to populate these fields.
->>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
 6. Keep workflows simple and focused - don't overcomplicate
 7. If description mentions AI/LLM/GPT/Claude/Gemini, use appropriate AI node (openai_gpt, anthropic_claude, or google_gemini)
 8. Always end with an output action (http_post, email_resend, slack_message, discord_webhook, database_write, log_output, or google_gmail with operation: send) if the workflow should produce results

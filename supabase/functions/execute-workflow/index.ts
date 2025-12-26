@@ -2223,7 +2223,6 @@ async function executeNode(
       return input;
     }
 
-<<<<<<< HEAD
     case "javascript": {
       const code = config.code as string;
       if (!code || !code.trim()) {
@@ -2251,7 +2250,9 @@ async function executeNode(
       } catch (error) {
         console.error(`JavaScript node execution error:`, error);
         throw new Error(`JavaScript execution failed: ${error instanceof Error ? error.message : String(error)}`);
-=======
+      }
+    }
+
     case "loop": {
       // Loop: Iterate over items with max iterations protection
       const arrayExpr = getStringProperty(config, 'array', '');
@@ -2259,7 +2260,6 @@ async function executeNode(
       
       if (!arrayExpr || arrayExpr.trim() === '') {
         throw new Error('Loop: Array expression is required. Please configure the array expression in the node properties.');
->>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
       }
       
       // Extract array from input

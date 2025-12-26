@@ -31,15 +31,6 @@ export interface ConfigField {
 }
 
 export const NODE_CATEGORIES: { id: NodeCategory; label: string; color: string }[] = [
-<<<<<<< HEAD
-  { id: 'triggers', label: 'Triggers', color: 'hsl(var(--primary))' },
-  { id: 'ai', label: 'AI Processing', color: 'hsl(var(--accent))' },
-  { id: 'logic', label: 'Logic & Control', color: 'hsl(var(--secondary))' },
-  { id: 'data', label: 'Data Transform', color: 'hsl(142 71% 45%)' },
-  { id: 'http_api', label: 'HTTP & API Nodes', color: 'hsl(221 83% 53%)' },
-  { id: 'output', label: 'Output Actions', color: 'hsl(25 95% 53%)' },
-  { id: 'google', label: 'Google Nodes', color: 'hsl(217 89% 61%)' },
-=======
   { id: 'triggers', label: 'Trigger Nodes', color: 'hsl(var(--primary))' },
   { id: 'logic', label: 'Core Logic Nodes', color: 'hsl(var(--secondary))' },
   { id: 'data', label: 'Data Manipulation', color: 'hsl(142 71% 45%)' },
@@ -48,7 +39,7 @@ export const NODE_CATEGORIES: { id: NodeCategory; label: string; color: string }
   { id: 'ai', label: 'AI & ML Nodes', color: 'hsl(var(--accent))' },
   { id: 'http_api', label: 'HTTP & API', color: 'hsl(221 83% 53%)' },
   { id: 'output', label: 'Output/Communication', color: 'hsl(25 95% 53%)' },
->>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
+  { id: 'google', label: 'Google Nodes', color: 'hsl(217 89% 61%)' },
 ];
 
 export const NODE_TYPES: NodeTypeDefinition[] = [

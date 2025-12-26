@@ -9,12 +9,9 @@ import {
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type, 
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
   Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput,
-<<<<<<< HEAD
-  Calendar, CheckCircle, Users
-=======
+  Calendar, CheckCircle, Users,
   XCircle, Layers, Edit, Edit3, Tag, Code2, ListChecks, ArrowUpDown, List, Terminal,
   Calculator, Lock, Rss
->>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
 } from 'lucide-react';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -22,12 +19,9 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
   Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput,
-<<<<<<< HEAD
-  Calendar, CheckCircle, Users
-=======
-  XCircle, Layers, Edit, Edit3, Tag, Function: Code2, ListChecks, ArrowUpDown, List, Terminal,
+  Calendar, CheckCircle, Users,
+  XCircle, Layers, Edit, Edit3, Tag, Code2, ListChecks, ArrowUpDown, List, Terminal,
   Calculator, Lock, Rss
->>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
 };
 
 interface NodeLibraryProps {
