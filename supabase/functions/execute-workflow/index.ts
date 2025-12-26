@@ -17,6 +17,15 @@ declare const Deno: {
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { executeGoogleSheetsOperation, getGoogleAccessToken } from "../_shared/google-sheets.ts";
+import {
+  executeGoogleDocsOperation,
+  executeGoogleDriveOperation,
+  executeGoogleCalendarOperation,
+  executeGoogleGmailOperation,
+  executeGoogleBigQueryOperation,
+  executeGoogleTasksOperation,
+  executeGoogleContactsOperation,
+} from "../_shared/google-apis.ts";
 import { LLMAdapter } from "../_shared/llm-adapter.ts";
 
 const corsHeaders = {
@@ -310,8 +319,14 @@ serve(async (req: Request) => {
           // If there's only one connected node, use its output directly
           // For If/Else nodes, extract the 'input' property for downstream nodes
           if (validInputEdges.length === 1) {
-            const sourceOutput = nodeOutputs[validInputEdges[0].source];
-            const sourceNode = nodes.find(n => n.id === validInputEdges[0].source);
+            const sourceNodeId = validInputEdges[0].source;
+            const sourceOutput = nodeOutputs[sourceNodeId];
+            const sourceNode = nodes.find(n => n.id === sourceNodeId);
+
+            console.log(`Node ${node.data.label} - Source node: ${sourceNode?.data.label} (${sourceNode?.data.type}), Source ID: ${sourceNodeId}`);
+            console.log(`Node ${node.data.label} - Source output exists:`, sourceOutput !== undefined && sourceOutput !== null);
+            console.log(`Node ${node.data.label} - Source output type:`, typeof sourceOutput);
+            console.log(`Node ${node.data.label} - Source output keys:`, sourceOutput && typeof sourceOutput === 'object' ? Object.keys(sourceOutput) : 'N/A');
 
             // If source is If/Else node, extract the 'input' property
             if (sourceNode?.data.type === "if_else" && sourceOutput && typeof sourceOutput === "object") {
@@ -320,7 +335,13 @@ serve(async (req: Request) => {
               console.log(`Node ${node.data.label} getting input from If/Else node, extracted input:`, JSON.stringify(nodeInput));
             } else {
               nodeInput = sourceOutput;
-              console.log(`Node ${node.data.label} getting input from connected node ${validInputEdges[0].source}:`, JSON.stringify(nodeInput));
+              console.log(`Node ${node.data.label} getting input from connected node ${sourceNode?.data.label} (${sourceNodeId}):`, JSON.stringify(nodeInput));
+              
+              // For Google Doc nodes, ensure the output structure is preserved
+              if (sourceNode?.data.type === "google_doc" && nodeInput && typeof nodeInput === "object") {
+                console.log(`Node ${node.data.label} - Google Doc output structure:`, JSON.stringify(nodeInput));
+                console.log(`Node ${node.data.label} - Available fields: content=${!!(nodeInput as any).content}, body=${!!(nodeInput as any).body}, text=${!!(nodeInput as any).text}`);
+              }
             }
           } else {
             nodeInput = validInputEdges.reduce((acc, edge) => ({ ...acc, [edge.source]: nodeOutputs[edge.source] }), {});
@@ -427,15 +448,29 @@ serve(async (req: Request) => {
         nodeOutputs[node.id] = outputToStore;
         finalOutput = outputToStore;
 
-        console.log(`Stored output for node ${node.data.label}:`, JSON.stringify(outputToStore));
-        console.log(`NodeOutputs keys:`, Object.keys(nodeOutputs));
-        console.log(`NodeOutputs[${node.id}]:`, JSON.stringify(nodeOutputs[node.id]));
+        console.log(`✅ Stored output for node ${node.data.label} (${node.data.type}), ID: ${node.id}`);
+        console.log(`   Output type: ${typeof outputToStore}`);
+        console.log(`   Output keys:`, outputToStore && typeof outputToStore === 'object' ? Object.keys(outputToStore) : 'N/A');
+        if (node.data.type === "google_doc" && outputToStore && typeof outputToStore === "object") {
+          const docOutput = outputToStore as Record<string, unknown>;
+          console.log(`   📄 Google Doc output:`);
+          console.log(`      - documentId: ${docOutput.documentId}`);
+          console.log(`      - title: ${docOutput.title}`);
+          console.log(`      - content length: ${typeof docOutput.content === 'string' ? docOutput.content.length : 'N/A'}`);
+          console.log(`      - content preview: ${typeof docOutput.content === 'string' ? docOutput.content.substring(0, 100) : 'N/A'}`);
+        }
+        console.log(`   Full output:`, JSON.stringify(outputToStore).substring(0, 500));
 
         log.output = outputToStore;
         log.status = "success";
         log.finishedAt = new Date().toISOString();
       } catch (error) {
-        console.error(`Node ${node.id} error:`, error);
+        console.error(`❌ Node ${node.data.label} (${node.data.type}) ERROR:`, error);
+        console.error(`   Node ID: ${node.id}`);
+        console.error(`   Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
+        console.error(`   Error message: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(`   Stack: ${error instanceof Error ? error.stack : 'N/A'}`);
+        
         log.status = "failed";
         const errorObj = error instanceof Error ? error : new Error(String(error));
         log.error = errorObj.message;
@@ -1817,7 +1852,8 @@ async function executeNode(
       const payload: Record<string, unknown> = {};
 
       if (type === "slack_message") {
-        payload.text = replaceTemplates(config.message as string, input);
+        const messageValue = config.message;
+        payload.text = messageValue ? replaceTemplates(String(messageValue), input) : '';
         if (config.channel) payload.channel = config.channel;
         if (config.username) payload.username = config.username;
         if (config.iconEmoji) payload.icon_emoji = config.iconEmoji;
@@ -1834,7 +1870,8 @@ async function executeNode(
           }
         }
       } else {
-        payload.text = replaceTemplates(config.text as string, input);
+        const textValue = config.text;
+        payload.text = textValue ? replaceTemplates(String(textValue), input) : '';
       }
 
       const response = await fetch(webhookUrl, {
@@ -1855,8 +1892,9 @@ async function executeNode(
       const webhookUrl = config.webhookUrl as string;
       if (!webhookUrl) throw new Error("Discord webhook URL is required");
 
+      const contentValue = config.content;
       const payload: Record<string, unknown> = {
-        content: replaceTemplates(config.content as string, input),
+        content: contentValue ? replaceTemplates(String(contentValue), input) : '',
       };
       if (config.username) payload.username = config.username;
       if (config.avatarUrl) payload.avatar_url = config.avatarUrl;
@@ -1888,11 +1926,17 @@ async function executeNode(
       }
 
       // Extract and validate email fields
-      const to = replaceTemplates(config.to as string, input);
-      const from = replaceTemplates(config.from as string, input);
-      const subject = replaceTemplates(config.subject as string, input);
-      const body = replaceTemplates(config.body as string, input);
-      const replyTo = config.replyTo ? replaceTemplates(config.replyTo as string, input) : undefined;
+      const toValue = config.to;
+      const fromValue = config.from;
+      const subjectValue = config.subject;
+      const bodyValue = config.body;
+      const replyToValue = config.replyTo;
+      
+      const to = toValue ? replaceTemplates(String(toValue), input) : '';
+      const from = fromValue ? replaceTemplates(String(fromValue), input) : '';
+      const subject = subjectValue ? replaceTemplates(String(subjectValue), input) : '';
+      const body = bodyValue ? replaceTemplates(String(bodyValue), input) : '';
+      const replyTo = replyToValue ? replaceTemplates(String(replyToValue), input) : undefined;
 
       // Validate required fields
       if (!to || !to.trim()) {
@@ -2177,6 +2221,36 @@ async function executeNode(
       const duration = (config.duration as number) || 1000;
       await new Promise(resolve => setTimeout(resolve, Math.min(duration, 10000)));
       return input;
+    }
+
+    case "javascript": {
+      const code = config.code as string;
+      if (!code || !code.trim()) {
+        return input;
+      }
+      
+      try {
+        // Check if code is already a function expression/arrow function
+        const trimmedCode = code.trim();
+        if (trimmedCode.startsWith('(') || trimmedCode.startsWith('function') || trimmedCode.startsWith('async')) {
+          // Try as function expression first
+          try {
+            const fn = new Function("input", `return (${code})(input);`);
+            return fn(input);
+          } catch {
+            // Fall through to function body approach
+          }
+        }
+        
+        // Execute as function body (supports const, let, var, and other statements)
+        const fn = new Function("input", code);
+        const result = fn(input);
+        // If function doesn't return anything, return the input
+        return result !== undefined ? result : input;
+      } catch (error) {
+        console.error(`JavaScript node execution error:`, error);
+        throw new Error(`JavaScript execution failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     case "loop": {
@@ -3007,6 +3081,301 @@ async function executeNode(
           range: range || 'All',
         };
       }
+    }
+
+    case "google_doc": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google Doc node: User ID not found in workflow context. Please ensure you are authenticated.');
+      }
+
+      // Replace templates in config values
+      const processedConfig: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(config)) {
+        if (typeof value === 'string' && value.trim()) {
+          processedConfig[key] = replaceTemplates(value, input);
+        } else if (value !== null && value !== undefined) {
+          // If value is not a string but might contain templates, convert to string first
+          if (typeof value === 'object' && value !== null) {
+            // For objects, keep as-is (don't try to replace templates in objects)
+            processedConfig[key] = value;
+          } else {
+            // For other types, convert to string and try template replacement
+            const strValue = String(value);
+            if (strValue.includes('{{')) {
+              processedConfig[key] = replaceTemplates(strValue, input);
+            } else {
+              processedConfig[key] = value;
+            }
+          }
+        }
+      }
+
+      const operation = (processedConfig.operation as string) || 'read';
+      
+      // Extract document ID from URL if full URL is provided
+      if (processedConfig.documentId && typeof processedConfig.documentId === 'string') {
+        const docIdStr = processedConfig.documentId.trim();
+        // Check if it's a full URL and extract the ID
+        const urlMatch = docIdStr.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        if (urlMatch && urlMatch[1]) {
+          processedConfig.documentId = urlMatch[1];
+        } else if (docIdStr.includes('docs.google.com')) {
+          // Try alternative URL patterns
+          const altMatch = docIdStr.match(/document\/d\/([a-zA-Z0-9-_]+)/);
+          if (altMatch && altMatch[1]) {
+            processedConfig.documentId = altMatch[1];
+          }
+        }
+      }
+      
+      // Validate required fields based on operation
+      if (operation === 'read') {
+        if (!processedConfig.documentId || (typeof processedConfig.documentId === 'string' && !processedConfig.documentId.trim())) {
+          throw new Error('Google Doc: Document ID is required for read operation. Get it from the document URL: https://docs.google.com/document/d/DOCUMENT_ID/edit (you can paste the full URL or just the ID). Current value: ' + (processedConfig.documentId || 'empty'));
+        }
+      }
+      if (operation === 'create' && !processedConfig.title) {
+        throw new Error('Google Doc: Title is required for create operation');
+      }
+      if (operation === 'update' && !processedConfig.documentId) {
+        throw new Error('Google Doc: Document ID is required for update operation');
+      }
+      if (operation === 'update' && !processedConfig.content) {
+        throw new Error('Google Doc: Content is required for update operation');
+      }
+
+      const result = await executeGoogleDocsOperation(supabaseClient, userId, operation, processedConfig);
+
+      if (!result.success) {
+        const errorMsg = result.error || 'Google Doc operation failed';
+        console.error(`Google Doc operation failed: ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+
+      // Ensure we return the data
+      const docData = result.data;
+      if (!docData) {
+        throw new Error('Google Doc operation succeeded but returned no data');
+      }
+
+      console.log(`✅ Google Doc operation successful. Operation: ${operation}`);
+      console.log(`   Data keys:`, Object.keys(docData));
+      
+      if (operation === 'read') {
+        const readData = docData as Record<string, unknown>;
+        const documentId = readData.documentId as string;
+        const title = readData.title as string;
+        const content = readData.content as string || '';
+        const contentLength = typeof readData.contentLength === 'number' ? readData.contentLength : (content ? content.length : 0);
+        
+        console.log(`   Document ID: ${documentId}`);
+        console.log(`   Title: ${title}`);
+        console.log(`   Content length: ${contentLength}`);
+        console.log(`   Content preview (first 200 chars): ${content.substring(0, 200)}`);
+        console.log(`   Has content: ${contentLength > 0}`);
+        
+        // Return structured output similar to Google Sheets for consistency
+        // The 'data' field contains the actual content, making it easy to access
+        return {
+          operation: 'read',
+          documentId: documentId,
+          title: title,
+          data: content, // Main content field (similar to Google Sheets 'data' field)
+          content: content, // Alias for backward compatibility
+          body: content, // Alias
+          text: content, // Alias
+          contentLength: contentLength,
+          hasContent: contentLength > 0,
+          documentUrl: `https://docs.google.com/document/d/${documentId}/edit`,
+        };
+      } else {
+        // For create/update operations, return the data as-is
+        return docData;
+      }
+    }
+
+    case "google_drive": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google Drive node: User ID not found in workflow context');
+      }
+
+      // Replace templates in config values
+      const processedConfig: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(config)) {
+        if (typeof value === 'string' && value) {
+          processedConfig[key] = replaceTemplates(value, input);
+        } else if (value !== null && value !== undefined) {
+          processedConfig[key] = value;
+        }
+      }
+
+      const operation = (processedConfig.operation as string) || 'list';
+      const result = await executeGoogleDriveOperation(supabaseClient, userId, operation, processedConfig);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Google Drive operation failed');
+      }
+
+      return result.data;
+    }
+
+    case "google_calendar": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google Calendar node: User ID not found in workflow context');
+      }
+
+      // Replace templates in config values
+      const processedConfig: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(config)) {
+        if (typeof value === 'string' && value) {
+          processedConfig[key] = replaceTemplates(value, input);
+        } else if (value !== null && value !== undefined) {
+          processedConfig[key] = value;
+        }
+      }
+
+      const operation = (processedConfig.operation as string) || 'list';
+      const result = await executeGoogleCalendarOperation(supabaseClient, userId, operation, processedConfig);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Google Calendar operation failed');
+      }
+
+      return result.data;
+    }
+
+    case "google_gmail": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google Gmail node: User ID not found in workflow context');
+      }
+
+      // Replace templates in config values
+      const processedConfig: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(config)) {
+        if (typeof value === 'string' && value) {
+          processedConfig[key] = replaceTemplates(value, input);
+        } else if (value !== null && value !== undefined) {
+          processedConfig[key] = value;
+        }
+      }
+
+      const operation = (processedConfig.operation as string) || 'send';
+      const result = await executeGoogleGmailOperation(supabaseClient, userId, operation, processedConfig);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Gmail operation failed');
+      }
+
+      return result.data;
+    }
+
+    case "google_bigquery": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google BigQuery node: User ID not found in workflow context');
+      }
+
+      // Replace templates in config values
+      const processedConfig: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(config)) {
+        if (typeof value === 'string' && value) {
+          processedConfig[key] = replaceTemplates(value, input);
+        } else if (value !== null && value !== undefined) {
+          processedConfig[key] = value;
+        }
+      }
+
+      const result = await executeGoogleBigQueryOperation(supabaseClient, userId, processedConfig);
+
+      if (!result.success) {
+        throw new Error(result.error || 'BigQuery operation failed');
+      }
+
+      return result.data;
+    }
+
+    case "google_tasks": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google Tasks node: User ID not found in workflow context');
+      }
+
+      // Replace templates in config values
+      const processedConfig: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(config)) {
+        if (typeof value === 'string' && value) {
+          processedConfig[key] = replaceTemplates(value, input);
+        } else if (value !== null && value !== undefined) {
+          processedConfig[key] = value;
+        }
+      }
+
+      const operation = (processedConfig.operation as string) || 'list';
+      const result = await executeGoogleTasksOperation(supabaseClient, userId, operation, processedConfig);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Google Tasks operation failed');
+      }
+
+      return result.data;
+    }
+
+    case "google_contacts": {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      const userId = (input as any)?._user_id;
+      if (!userId) {
+        throw new Error('Google Contacts node: User ID not found in workflow context');
+      }
+
+      // Replace templates in config values
+      const processedConfig: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(config)) {
+        if (typeof value === 'string' && value) {
+          processedConfig[key] = replaceTemplates(value, input);
+        } else if (value !== null && value !== undefined) {
+          processedConfig[key] = value;
+        }
+      }
+
+      const operation = (processedConfig.operation as string) || 'list';
+      const result = await executeGoogleContactsOperation(supabaseClient, userId, operation, processedConfig);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Google Contacts operation failed');
+      }
+
+      return result.data;
     }
 
     case "memory": {
@@ -5828,14 +6197,22 @@ function tryParseJson(value: unknown): unknown {
   return value;
 }
 
-function replaceTemplates(template: string, input: unknown): string {
-  if (!template) return "";
+function replaceTemplates(template: unknown, input: unknown): string {
+  // Handle non-string values safely
+  if (template === null || template === undefined) {
+    return "";
+  }
+  
+  // Convert to string if not already
+  const templateStr = typeof template === "string" ? template : String(template);
+  
+  if (!templateStr) return "";
 
-  console.log(`[TEMPLATE] Replacing templates in: "${template}"`);
+  console.log(`[TEMPLATE] Replacing templates in: "${templateStr}"`);
   console.log(`[TEMPLATE] Input:`, JSON.stringify(input));
 
   // First replace {{input.property}} patterns
-  let result = template.replace(/\{\{input\.([\w.]+)\}\}/g, (match, path) => {
+  let result = templateStr.replace(/\{\{input\.([\w.]+)\}\}/g, (match, path) => {
     console.log(`[TEMPLATE] Replacing ${match} with path: ${path}`);
 
     if (input && typeof input === "object" && input !== null) {

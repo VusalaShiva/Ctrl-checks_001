@@ -68,7 +68,7 @@ export async function getGoogleAccessToken(
 }
 
 /**
- * Refresh Google OAuth token
+ * Refresh Google OAuth token with rotation support
  */
 async function refreshGoogleToken(
   supabase: any,
@@ -81,9 +81,11 @@ async function refreshGoogleToken(
     const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
 
     if (!clientId || !clientSecret) {
-      console.error('Google OAuth credentials not configured');
+      console.error('[Google OAuth] Credentials not configured');
       return null;
     }
+
+    console.log('[Google OAuth] Refreshing token for user:', userId);
 
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -100,26 +102,56 @@ async function refreshGoogleToken(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Failed to refresh Google token:', errorText);
+      let errorMessage = 'Failed to refresh Google token';
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error_description || errorData.error || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      
+      console.error('[Google OAuth] Token refresh failed:', errorMessage);
+      
+      // If refresh token is invalid, user needs to re-authenticate
+      if (response.status === 400) {
+        console.error('[Google OAuth] Refresh token invalid, user needs to re-authenticate');
+      }
+      
       return null;
     }
 
     const tokenData = await response.json();
     const expiresAt = new Date(Date.now() + (tokenData.expires_in * 1000));
 
+    // Prepare update data - handle refresh token rotation
+    const updateData: Record<string, unknown> = {
+      access_token: tokenData.access_token,
+      expires_at: expiresAt.toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Google may return a new refresh token (rotation)
+    if (tokenData.refresh_token) {
+      updateData.refresh_token = tokenData.refresh_token;
+      console.log('[Google OAuth] Refresh token rotated');
+    }
+
     // Update token in database
-    await supabase
+    const { error: updateError } = await supabase
       .from('google_oauth_tokens')
-      .update({
-        access_token: tokenData.access_token,
-        expires_at: expiresAt.toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('user_id', userId);
 
+    if (updateError) {
+      console.error('[Google OAuth] Failed to update token in database:', updateError);
+      return null;
+    }
+
+    console.log('[Google OAuth] Token refreshed successfully');
     return tokenData.access_token;
   } catch (error) {
-    console.error('Error refreshing Google token:', error);
+    console.error('[Google OAuth] Error refreshing token:', error);
     return null;
   }
 }

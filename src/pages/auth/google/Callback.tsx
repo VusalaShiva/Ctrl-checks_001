@@ -50,7 +50,7 @@ export default function GoogleAuthCallback() {
             refresh_token: provider_refresh_token || null,
             expires_at: new Date(Date.now() + 3600 * 1000).toISOString(), // Approx 1 hour default
             token_type: 'Bearer',
-            scope: 'https://www.googleapis.com/auth/spreadsheets',
+            scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/bigquery https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/contacts',
             updated_at: new Date().toISOString()
           }, {
             onConflict: 'user_id'

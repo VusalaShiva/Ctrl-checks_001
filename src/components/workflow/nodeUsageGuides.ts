@@ -551,4 +551,206 @@ Text: "Workflow completed at {{input.timestamp}}"
 Sends simple text message to Slack.`,
     tips: ['Simplest Slack integration', 'No blocks or rich formatting', 'Good for basic alerts'],
   },
+
+  google_doc: {
+    overview: 'Read, create, or update Google Docs documents. Extract text content from existing documents, create new documents, or add content to existing ones. The read operation extracts ALL text including paragraphs, tables, and lists.',
+    inputs: ['documentId or full URL (required for read/update)', 'title (required for create)', 'content (required for create/update)'],
+    outputs: ['documentId', 'title', 'content (full extracted text)', 'body (same as content)', 'text (same as content)', 'contentLength', 'hasContent', 'documentUrl'],
+    example: `Operation: Read
+Document ID or URL: https://docs.google.com/document/d/1a2b3c4d5e6f7g8h9i0j/edit
+(You can paste the full URL or just the ID: 1a2b3c4d5e6f7g8h9i0j)
+
+Output: {
+  documentId: "1a2b3c4d5e6f7g8h9i0j",
+  title: "My Document",
+  content: "Full text content extracted from the document including all paragraphs, tables, and formatted text...",
+  body: "Full text content...", // Same as content
+  text: "Full text content...", // Same as content
+  contentLength: 1234,
+  hasContent: true,
+  documentUrl: "https://docs.google.com/document/d/1a2b3c4d5e6f7g8h9i0j/edit"
+}
+
+Access the content in next nodes using: {{input.content}}, {{input.body}}, or {{input.text}}
+
+Operation: Create
+Title: "New Report"
+Content: "This is the document content..."
+
+Output: {
+  documentId: "new_doc_id",
+  title: "New Report",
+  documentUrl: "https://docs.google.com/document/d/new_doc_id/edit"
+}
+
+Operation: Update
+Document ID: 1a2b3c4d5e6f7g8h9i0j
+Content: "New content to append"
+
+Output: {
+  documentId: "1a2b3c4d5e6f7g8h9i0j",
+  updated: true
+}`,
+    tips: [
+      'Get Document ID from Google Docs URL: https://docs.google.com/document/d/DOCUMENT_ID/edit - you can paste the full URL or just the DOCUMENT_ID part',
+      'Read operation extracts ALL text content including paragraphs, tables, lists, and formatted text',
+      'The content/body/text fields in read output contain the full document text as a string - use {{input.content}} to access it',
+      'Create operation creates an empty document first, then inserts content if provided',
+      'Update operation appends new content to the beginning of the document',
+      'Always authenticate with Google account first via Settings > Integrations > Google',
+      'For read operation, ensure the document is shared with your Google account or is publicly accessible',
+    ],
+  },
+
+  google_drive: {
+    overview: 'List, upload, download, or delete files in Google Drive. Manage your Drive files programmatically.',
+    inputs: ['folderId (for list)', 'fileId (for download/delete)', 'fileName and fileContent (for upload)'],
+    outputs: ['files array (list)', 'fileId and webViewLink (upload)', 'content (download)', 'deleted status (delete)'],
+    example: `Operation: List Files
+Folder ID: (leave empty for root)
+
+Output: [
+  {id: "file1", name: "document.pdf", mimeType: "application/pdf"},
+  {id: "file2", name: "image.jpg", mimeType: "image/jpeg"}
+]
+
+Operation: Upload File
+File Name: "report.pdf"
+File Content: [Base64 encoded content]
+
+Output: {
+  fileId: "uploaded_file_id",
+  name: "report.pdf",
+  webViewLink: "https://drive.google.com/file/d/.../view"
+}`,
+    tips: [
+      'Leave Folder ID empty to list root folder',
+      'File IDs are in URL: /file/d/FILE_ID/view',
+      'Upload requires Base64 encoded file content',
+      'Download returns Base64 encoded content',
+    ],
+  },
+
+  google_calendar: {
+    overview: 'Create, list, update, or delete Google Calendar events. Manage your calendar programmatically.',
+    inputs: ['calendarId', 'eventId (for update/delete)', 'summary', 'startTime', 'endTime', 'description'],
+    outputs: ['events array (list)', 'eventId and htmlLink (create)', 'updated event (update)', 'deleted status (delete)'],
+    example: `Operation: Create Event
+Calendar ID: primary
+Event Title: "Team Meeting"
+Start Time: 2024-01-15T14:00:00Z
+End Time: 2024-01-15T15:00:00Z
+Description: "Weekly sync"
+
+Output: {
+  eventId: "event_id",
+  summary: "Team Meeting",
+  htmlLink: "https://calendar.google.com/event?eid=..."
+}`,
+    tips: [
+      'Use "primary" for main calendar',
+      'Times must be ISO 8601 format (UTC)',
+      'Event IDs returned when creating events',
+      'List shows upcoming events only',
+    ],
+  },
+
+  google_gmail: {
+    overview: 'Send, list, get, or search Gmail messages. Automate email operations in your workflows.',
+    inputs: ['to, subject, body (for send)', 'messageId (for get)', 'query (for search)'],
+    outputs: ['messageId and threadId (send)', 'messages array (list/search)', 'full message (get)'],
+    example: `Operation: Send Email
+To: recipient@example.com
+Subject: "Workflow Notification"
+Body: "Your workflow completed successfully!"
+
+Output: {
+  messageId: "sent_message_id",
+  threadId: "thread_id"
+}
+
+Operation: Search Messages
+Search Query: from:example@gmail.com
+Max Results: 10
+
+Output: [
+  {id: "message_id_1"},
+  {id: "message_id_2"}
+]`,
+    tips: [
+      'Gmail search syntax: from:, subject:, is:unread, has:attachment',
+      'Message IDs returned when listing/searching',
+      'Body is plain text only',
+      'Use search to filter messages before getting details',
+    ],
+  },
+
+  google_bigquery: {
+    overview: 'Execute SQL queries on BigQuery datasets. Run analytics queries and get results.',
+    inputs: ['projectId', 'datasetId', 'query', 'useLegacySql'],
+    outputs: ['rows', 'totalRows', 'jobComplete'],
+    example: `Project ID: my-project-id
+Dataset ID: my_dataset
+SQL Query: SELECT * FROM \`my-project-id.my_dataset.my_table\` LIMIT 10
+
+Output: {
+  rows: [
+    {column1: "value1", column2: "value2"},
+    {column1: "value3", column2: "value4"}
+  ],
+  totalRows: "2",
+  jobComplete: true
+}`,
+    tips: [
+      'Use backticks for table names: \`project.dataset.table\`',
+      'Standard SQL recommended (set Use Legacy SQL to false)',
+      'Results automatically formatted as JSON objects',
+      'Large queries may take time',
+    ],
+  },
+
+  google_tasks: {
+    overview: 'Create, list, update, or complete Google Tasks. Manage your task list programmatically.',
+    inputs: ['taskListId', 'taskId (for update/complete)', 'title', 'notes', 'dueDate'],
+    outputs: ['tasks array (list)', 'created task (create)', 'updated task (update)', 'completed task (complete)'],
+    example: `Operation: Create Task
+Task List ID: @default
+Task Title: "Review proposal"
+Notes: "Check budget and timeline"
+Due Date: 2024-01-20T17:00:00Z
+
+Output: {
+  id: "task_id",
+  title: "Review proposal",
+  status: "needsAction"
+}`,
+    tips: [
+      'Use "@default" for default task list',
+      'Task IDs returned when creating tasks',
+      'Due dates must be ISO 8601 format',
+      'Completed tasks hidden from list by default',
+    ],
+  },
+
+  google_contacts: {
+    overview: 'List, create, update, or delete Google Contacts. Manage your contact list programmatically.',
+    inputs: ['contactId (for update/delete)', 'name', 'email', 'phone', 'maxResults'],
+    outputs: ['contacts array (list)', 'created contact (create)', 'updated contact (update)', 'deleted status (delete)'],
+    example: `Operation: Create Contact
+Name: "John Doe"
+Email: john@example.com
+Phone: +1234567890
+
+Output: {
+  resourceName: "people/c1234567890",
+  name: "John Doe",
+  email: "john@example.com"
+}`,
+    tips: [
+      'Contact ID is resourceName field (e.g., people/c1234567890)',
+      'Email required for creating contacts',
+      'Phone should include country code (e.g., +1234567890)',
+      'Max results limit applies to list operation',
+    ],
+  },
 };
