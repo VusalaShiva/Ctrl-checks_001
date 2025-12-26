@@ -7,13 +7,16 @@ import {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch,
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
   Combine, Send, Mail, MessageSquare, Database, Box,
-  CheckCircle, XCircle, Loader2
+  CheckCircle, XCircle, Loader2, Layers, Edit, Edit3, Tag, Code2, ListChecks, ArrowUpDown, List, Terminal,
+  Calculator, Lock, Rss
 } from 'lucide-react';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch,
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
-  Combine, Send, Mail, MessageSquare, Database, Box
+  Combine, Send, Mail, MessageSquare, Database, Box,
+  XCircle, Layers, Edit, Edit3, Tag, Function: Code2, ListChecks, ArrowUpDown, List, Terminal,
+  Calculator, Lock, Rss
 };
 
 type WorkflowNodeProps = Node<NodeData>;

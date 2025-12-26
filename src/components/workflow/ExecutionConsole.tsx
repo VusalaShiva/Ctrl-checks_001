@@ -29,7 +29,7 @@ interface ExecutionConsoleProps {
 }
 
 export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionConsoleProps) {
-  const { workflowId, updateNodeStatus, resetWorkflow } = useWorkflowStore();
+  const { workflowId, updateNodeStatus, resetWorkflow, resetAllNodeStatuses } = useWorkflowStore();
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
@@ -95,6 +95,10 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
           if (payload.eventType === 'INSERT') {
             const newExecution = payload.new as Execution;
             setExecutions(prev => [newExecution, ...prev.slice(0, 9)]);
+            // Reset all node statuses when a new execution starts
+            resetAllNodeStatuses();
+            // Reset execution ID tracking to trigger status reset
+            setLastExecutionId(null);
             // Auto-select the new execution
             setSelectedExecution(newExecution);
             // Auto-expand console if collapsed (triggered from parent)
@@ -120,9 +124,22 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
     };
   }, [workflowId, selectedExecution?.id]);
 
+  // Track the last execution ID to detect when we switch to a different execution
+  const [lastExecutionId, setLastExecutionId] = useState<string | null>(null);
+
   // Sync execution status with canvas nodes
   useEffect(() => {
-    if (!selectedExecution?.logs || !Array.isArray(selectedExecution.logs)) return;
+    const executionId = selectedExecution?.id;
+    
+    // Reset all node statuses when switching to a different execution
+    if (executionId && executionId !== lastExecutionId) {
+      resetAllNodeStatuses();
+      setLastExecutionId(executionId);
+    }
+
+    if (!selectedExecution?.logs || !Array.isArray(selectedExecution.logs)) {
+      return;
+    }
 
     const logs = selectedExecution.logs as any[];
 
@@ -143,7 +160,7 @@ export default function ExecutionConsole({ isExpanded, onToggle }: ExecutionCons
         updateNodeStatus(log.nodeId, nodeStatus);
       }
     });
-  }, [selectedExecution, updateNodeStatus]);
+  }, [selectedExecution, updateNodeStatus, resetAllNodeStatuses, lastExecutionId]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {

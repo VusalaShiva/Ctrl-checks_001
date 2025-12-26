@@ -1,22 +1,48 @@
 import { NodeUsageGuide } from './nodeTypes';
 
 export const NODE_USAGE_GUIDES: Record<string, NodeUsageGuide> = {
-  // Triggers
+  // Trigger Nodes
   manual_trigger: {
-    overview: 'Starts your workflow when you click the "Run" button. Perfect for testing or on-demand tasks.',
+    overview: 'Starts your workflow when you click the "Run" button. Perfect for testing or on-demand tasks. No input required - fires once per manual execution.',
     inputs: ['None - This is a start node'],
-    outputs: ['trigger_data', 'timestamp'],
+    outputs: ['trigger', 'workflow_id', 'executed_at'],
     example: `Connect → OpenAI GPT → Slack Message
 
 When you click Run, the workflow executes.
-Output: { triggered_at: "2024-01-15T10:30:00Z" }`,
-    tips: ['Use for testing before adding automated triggers', 'Can pass custom input data when running'],
+Output: { 
+  trigger: "manual",
+  workflow_id: "uuid",
+  executed_at: "2024-01-15T10:30:00Z"
+}`,
+    tips: ['Use for testing before adding automated triggers', 'Can pass custom input data when running', 'workflow_id is auto-generated', 'executed_at is ISO-8601 timestamp'],
+  },
+
+  schedule: {
+    overview: 'Runs your workflow automatically on a schedule using a simple time picker. Select your time (HH:MM format) and timezone, and the workflow will execute daily at that time. Great for daily reports, periodic checks, or recurring tasks.',
+    inputs: ['None - Triggered by schedule'],
+    outputs: ['trigger', 'time', 'cron', 'timezone', 'executed_at'],
+    example: `Time: "09:00"
+Timezone: "Asia/Kolkata" (IST)
+Meaning: Daily at 9:00 AM Indian Standard Time
+
+Time: "14:30"
+Timezone: "America/New_York"
+Meaning: Daily at 2:30 PM Eastern Time
+
+Output: {
+  trigger: "schedule",
+  time: "09:00",
+  cron: "0 9 * * *",
+  timezone: "Asia/Kolkata",
+  executed_at: "2024-01-15T03:30:00Z"
+}`,
+    tips: ['Use 24-hour format (e.g., 09:00 for 9 AM, 14:30 for 2:30 PM)', 'Select your timezone from the dropdown (IST, UTC, etc.)', 'Workflow runs daily at the specified time', 'Test with manual trigger first', 'Timezone conversion is handled automatically'],
   },
 
   webhook: {
-    overview: 'Receives HTTP requests from external services. Use this to trigger workflows from other apps, APIs, or services.',
+    overview: 'Receives HTTP requests from external services. Use this to trigger workflows from other apps, APIs, or services. Parses headers, query parameters, and JSON body safely.',
     inputs: ['HTTP request body', 'Headers', 'Query params'],
-    outputs: ['body', 'headers', 'method', 'query'],
+    outputs: ['trigger', 'method', 'headers', 'query', 'body'],
     example: `Webhook URL: https://your-app.com/api/webhook/abc123
 
 External Service sends POST:
@@ -25,35 +51,83 @@ External Service sends POST:
   "data": { "id": 123, "total": 99.99 }
 }
 
-Output: { body: {...}, method: "POST" }`,
-    tips: ['Copy the webhook URL after saving', 'Supports GET, POST, PUT methods', 'Headers are available in output'],
+Output: { 
+  trigger: "webhook",
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  query: {},
+  body: {"event": "order_created", "data": {...}}
+}`,
+    tips: ['Copy the webhook URL after saving', 'Supports GET, POST, PUT methods', 'Headers and query params are available in output', 'JSON body is parsed safely'],
   },
 
-  schedule: {
-    overview: 'Runs your workflow automatically on a schedule using cron expressions. Great for daily reports, periodic checks, or recurring tasks.',
-    inputs: ['None - Triggered by schedule'],
-    outputs: ['scheduled_time', 'execution_id'],
-    example: `Cron: "0 9 * * 1-5"
-Meaning: Every weekday at 9:00 AM
+  chat_trigger: {
+    overview: 'Triggers workflow from chat / AI / UI messages. Perfect for chatbot integrations and AI assistants. Requires message and session_id.',
+    inputs: ['message (required)', 'session_id (required)', 'user_context (optional)'],
+    outputs: ['trigger', 'message', 'session_id', 'user_context'],
+    example: `Chat Input:
+{
+  "message": "Hello, how can I help?",
+  "session_id": "session_123",
+  "user_context": {"name": "John", "role": "user"}
+}
 
-Common patterns:
-• "0 * * * *" - Every hour
-• "0 9 * * *" - Daily at 9 AM
-• "0 0 * * 0" - Every Sunday midnight
-• "*/15 * * * *" - Every 15 minutes`,
-    tips: ['Use crontab.guru to build expressions', 'Times are in UTC', 'Test with manual trigger first'],
+Output: {
+  trigger: "chat",
+  message: "Hello, how can I help?",
+  session_id: "session_123",
+  user_context: {"name": "John", "role": "user"}
+}`,
+    tips: ['message cannot be empty', 'session_id is required', 'user_context is optional and normalized to object', 'Perfect for chatbot integrations'],
   },
 
-  http_trigger: {
-    overview: 'Polls an external API at regular intervals and triggers when new data is detected. Use for APIs without webhooks.',
-    inputs: ['None - Polls automatically'],
-    outputs: ['response_data', 'status_code', 'headers'],
-    example: `URL: https://api.github.com/repos/user/repo/issues
-Interval: 60000 (1 minute)
+  error_trigger: {
+    overview: 'Automatically fires when any node fails in the workflow. Global scope - cannot be manually executed. Fires on unhandled exceptions.',
+    inputs: ['Error information from failed node'],
+    outputs: ['trigger', 'failed_node', 'error_message', 'stack_trace'],
+    example: `When a node fails:
 
-Every minute, checks for new issues.
-When found, triggers with issue data.`,
-    tips: ['Set appropriate poll intervals to avoid rate limits', 'Use headers for API authentication'],
+Output: {
+  trigger: "error",
+  failed_node: "http_request",
+  error_message: "HTTP Request failed: Connection timeout",
+  stack_trace: "Error: Connection timeout\n    at executeNode..."
+}`,
+    tips: ['Cannot be manually executed', 'Fires automatically on node failures', 'Global scope - catches all errors', 'Use for error logging and recovery workflows'],
+  },
+
+  interval: {
+    overview: 'Runs workflow repeatedly at fixed intervals. Non-blocking and prevents duplicate executions. Supports seconds (s), minutes (m), and hours (h) units.',
+    inputs: ['None - Triggered by interval'],
+    outputs: ['trigger', 'interval', 'executed_at'],
+    example: `Interval: "10m" (every 10 minutes)
+Interval: "30s" (every 30 seconds)
+Interval: "1h" (every 1 hour)
+
+Output: {
+  trigger: "interval",
+  interval: "10m",
+  executed_at: "2024-01-15T10:30:00Z"
+}`,
+    tips: ['Use format: number + unit (s/m/h)', 'Examples: 30s, 5m, 1h', 'Non-blocking execution', 'Duplicate executions are prevented', 'Deactivate when not needed'],
+  },
+
+  workflow_trigger: {
+    overview: 'Triggers one workflow from another workflow. Accepts source workflow_id and passes execution payload. Prevents circular triggers.',
+    inputs: ['payload from source workflow'],
+    outputs: ['trigger', 'source_workflow_id', 'payload'],
+    example: `Source Workflow A triggers Target Workflow B:
+
+Workflow B receives:
+{
+  trigger: "workflow",
+  source_workflow_id: "workflow-a-uuid",
+  payload: {
+    "order_id": 123,
+    "status": "completed"
+  }
+}`,
+    tips: ['source_workflow_id is required', 'Payload is passed from source workflow', 'Prevents circular triggers', 'Great for workflow orchestration'],
   },
 
   // AI Processing

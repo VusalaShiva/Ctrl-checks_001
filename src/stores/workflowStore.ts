@@ -10,7 +10,7 @@ import {
   addEdge,
 } from '@xyflow/react';
 
-export type NodeCategory = 'triggers' | 'ai' | 'logic' | 'data' | 'output' | 'http_api';
+export type NodeCategory = 'triggers' | 'ai' | 'logic' | 'data' | 'database' | 'storage' | 'output' | 'http_api';
 
 export interface NodeData {
   label: string;
@@ -49,6 +49,7 @@ interface WorkflowState {
   addNode: (node: WorkflowNode) => void;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
   updateNodeStatus: (nodeId: string, status: 'idle' | 'running' | 'success' | 'error') => void;
+  resetAllNodeStatuses: () => void;
   selectNode: (node: WorkflowNode | null) => void;
   selectEdge: (edge: Edge | null) => void;
   deleteSelectedNode: () => void;
@@ -160,6 +161,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           ? { ...node, data: { ...node.data, executionStatus: status } }
           : node
       ),
+    });
+  },
+
+  resetAllNodeStatuses: () => {
+    // Reset all node execution statuses to 'idle' - used when starting a new execution
+    set({
+      nodes: get().nodes.map((node) => ({
+        ...node,
+        data: { ...node.data, executionStatus: 'idle' as const },
+      })),
     });
   },
 
