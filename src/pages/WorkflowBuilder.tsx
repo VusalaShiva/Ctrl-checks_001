@@ -31,6 +31,7 @@ export default function WorkflowBuilder() {
     setWorkflowName,
     setIsDirty,
     resetWorkflow,
+    resetAllNodeStatuses,
   } = useWorkflowStore();
 
   useEffect(() => {
@@ -149,6 +150,9 @@ export default function WorkflowBuilder() {
       });
       return;
     }
+
+    // Reset all node statuses to 'idle' before starting new execution
+    resetAllNodeStatuses();
 
     setIsRunning(true);
     // Expand console to show logs

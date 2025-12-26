@@ -7,14 +7,25 @@ import {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch,
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
   Combine, Send, Mail, MessageSquare, Database, Box,
+<<<<<<< HEAD
   CheckCircle, XCircle, Loader2, FileText, DatabaseZap, Calendar, Users
+=======
+  CheckCircle, XCircle, Loader2, Layers, Edit, Edit3, Tag, Code2, ListChecks, ArrowUpDown, List, Terminal,
+  Calculator, Lock, Rss
+>>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
 } from 'lucide-react';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch,
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
+<<<<<<< HEAD
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, DatabaseZap,
   Calendar, CheckCircle, Users
+=======
+  Combine, Send, Mail, MessageSquare, Database, Box,
+  XCircle, Layers, Edit, Edit3, Tag, Function: Code2, ListChecks, ArrowUpDown, List, Terminal,
+  Calculator, Lock, Rss
+>>>>>>> 5e14865785775ae67e8b61c0e4a12d301a5fd306
 };
 
 type WorkflowNodeProps = Node<NodeData>;

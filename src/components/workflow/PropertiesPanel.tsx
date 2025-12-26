@@ -15,14 +15,18 @@ import {
   Trash2, X, Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link,
   GitBranch, GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table,
   Type, Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
-  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput, HelpCircle
+  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput, HelpCircle,
+  XCircle, Layers, Edit, Edit3, Tag, Code2, ListChecks, ArrowUpDown, List, Terminal,
+  Calculator, Lock, Rss
 } from 'lucide-react';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch,
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
-  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput
+  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput,
+  XCircle, Layers, Edit, Edit3, Tag, Function: Code2, ListChecks, ArrowUpDown, List, Terminal,
+  Calculator, Lock, Rss
 };
 
 export default function PropertiesPanel() {
@@ -109,6 +113,20 @@ export default function PropertiesPanel() {
             value={value as string}
             onChange={(e) => handleConfigChange(field.key, e.target.value)}
             placeholder={field.placeholder}
+            className="h-9"
+            onMouseDown={handleInputMouseDown}
+            onFocus={(e) => e.stopPropagation()}
+          />
+        );
+
+      case 'time':
+        return (
+          <Input
+            id={field.key}
+            type="time"
+            value={value as string}
+            onChange={(e) => handleConfigChange(field.key, e.target.value)}
+            placeholder={field.placeholder || '09:00'}
             className="h-9"
             onMouseDown={handleInputMouseDown}
             onFocus={(e) => e.stopPropagation()}

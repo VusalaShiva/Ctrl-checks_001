@@ -14,8 +14,9 @@ export function validateWorkflow(nodes: Node[], edges: Edge[]): WorkflowValidati
 
     // 1. Check for Independent/Orphan Nodes (except triggers)
     nodes.forEach(node => {
-        // Skip triggers
-        if (['manual_trigger', 'webhook', 'schedule', 'http_trigger'].includes(node.data.type as string)) {
+        // Skip triggers (including backward compatibility for old types)
+        if (['manual_trigger', 'webhook', 'webhook_trigger_response', 'schedule', 'chat_trigger', 
+             'error_trigger', 'interval', 'workflow_trigger', 'http_trigger'].includes(node.data.type as string)) {
             return;
         }
 
