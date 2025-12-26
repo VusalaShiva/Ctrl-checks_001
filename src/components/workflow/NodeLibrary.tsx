@@ -8,14 +8,16 @@ import {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch, 
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type, 
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
-  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput
+  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput,
+  Calendar, CheckCircle, Users
 } from 'lucide-react';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Play, Webhook, Clock, Globe, Brain, Sparkles, Gem, Link, GitBranch,
   GitMerge, Repeat, Timer, ShieldAlert, Code, Braces, Table, Type,
   Combine, Send, Mail, MessageSquare, Database, Box, FileText, Heart,
-  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput
+  Filter, Variable, Hash, MessageCircle, DatabaseZap, FileOutput,
+  Calendar, CheckCircle, Users
 };
 
 interface NodeLibraryProps {

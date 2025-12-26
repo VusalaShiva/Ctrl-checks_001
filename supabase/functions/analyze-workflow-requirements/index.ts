@@ -44,6 +44,7 @@ serve(async (req: Request) => {
       
       Specific Rules:
       - For Google Sheets: ALWAYS ask for "google_sheet_url" and "sheet_name". Do NOT ask for "spreadsheet_id" directly as it's hard for users to find.
+      - For Google Docs: ALWAYS ask for "google_doc_url" (the full Google Docs URL). Do NOT ask for "document_id" directly. Users should paste the full URL like: https://docs.google.com/document/d/DOCUMENT_ID/edit
       - For others: Ask for the most user-friendly identifier.
       
       Identify ONLY essential external identifiers, secrets, or specific configuration values that the user MUST provide for the workflow to function.
