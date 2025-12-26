@@ -229,11 +229,11 @@ class LLMAdapter {
 
 // Available node types for workflow generation
 const AVAILABLE_NODES = {
-  triggers: ['manual_trigger', 'webhook_trigger_response', 'schedule', 'http_trigger'],
+  triggers: ['manual_trigger', 'webhook', 'schedule', 'chat_trigger', 'error_trigger', 'interval', 'workflow_trigger'],
   ai: ['openai_gpt', 'anthropic_claude', 'google_gemini', 'text_summarizer', 'sentiment_analyzer'],
   logic: ['if_else', 'switch', 'loop', 'wait', 'error_handler', 'filter'],
   data: ['javascript', 'json_parser', 'csv_processor', 'text_formatter', 'merge_data', 'set_variable', 'google_sheets'],
-  http_api: ['http_request', 'graphql', 'webhook_trigger_response', 'respond_to_webhook'],
+  http_api: ['http_request', 'graphql', 'respond_to_webhook'],
   output: ['http_post', 'email_resend', 'slack_message', 'slack_webhook', 'discord_webhook', 'database_write', 'log_output'],
 };
 
@@ -309,9 +309,12 @@ serve(async (req) => {
     const nodeDescriptions = `
 TRIGGERS:
 - manual_trigger: Start workflow manually (no config needed)
-- webhook_trigger_response: Trigger via HTTP webhook and send response (config: method: POST/GET/PUT/DELETE)
-- schedule: Run on a schedule (config: cron expression like "0 9 * * *")
-- http_trigger: Trigger by polling an API (config: url, method, headers, interval)
+- webhook: Trigger via HTTP webhook (config: method: POST/GET/PUT)
+- schedule: Run on a schedule (config: time in HH:MM format like "09:00", timezone like "Asia/Kolkata" or "UTC")
+- chat_trigger: Trigger from chat/AI/UI messages (no config, receives message and session_id)
+- error_trigger: Automatically fire when any node fails (no config, global scope)
+- interval: Run workflow at fixed intervals (config: interval like "10m", "30s", "1h")
+- workflow_trigger: Trigger one workflow from another (config: source_workflow_id)
 
 AI PROCESSING:
 - openai_gpt: Process with OpenAI GPT models (config: apiKey, model: gpt-4o/gpt-4o-mini/gpt-4-turbo, prompt, temperature, memory)
@@ -343,7 +346,6 @@ DATA TRANSFORM:
 HTTP & API NODES:
 - http_request: Make HTTP API call (config: url, method: GET/POST/PUT/PATCH/DELETE, headers, body, timeout)
 - graphql: Execute GraphQL query (config: url, query, variables as JSON, headers, operationName, timeout)
-- webhook_trigger_response: Trigger via HTTP webhook and send response (config: method: POST/GET/PUT/DELETE)
 - respond_to_webhook: Send custom response to webhook caller (config: statusCode, responseBody as JSON, headers)
 
 OUTPUT ACTIONS:
@@ -390,7 +392,7 @@ ${JSON.stringify(config, null, 2)}
 If a value matches a node property (e.g. 'google_sheet_id' for 'spreadsheetId', 'slack_webhook' for 'webhookUrl'), USE IT.
 
 CRITICAL RULES:
-1. Always start with a trigger node (manual_trigger, webhook_trigger_response, schedule, or http_trigger)
+1. Always start with a trigger node (manual_trigger, webhook, schedule, chat_trigger, error_trigger, interval, or workflow_trigger)
 2. Connect nodes in a logical flow from trigger to output - each node should connect to the next
 3. Position nodes with x spacing of 300px and y spacing of 150px (start at x:250, y:100)
 4. Use ONLY the node types listed above - do not invent new node types
@@ -398,9 +400,11 @@ CRITICAL RULES:
    - For AI nodes: include prompt, model, temperature (0.7 default), memory (10 default)
    - For HTTP nodes (http_request): include url, method, headers, body if needed, timeout
    - For GraphQL nodes: include url, query, variables (JSON), headers, operationName if needed
-   - For webhook_trigger_response: include method (POST default)
+   - For webhook: include method (POST default)
    - For respond_to_webhook: include statusCode (200 default), responseBody (JSON), headers if needed
-   - For schedule: include cron expression
+   - For schedule: include time in HH:MM format (e.g., "09:00") and timezone (Asia/Kolkata default for IST)
+   - For interval: include interval in format like "10m", "30s", "1h"
+   - For workflow_trigger: include source_workflow_id
    - For email: include to, from, subject, body
    - For database: include table name and operation
    - **IMPORTANT**: Use the USER PROVIDED CONFIGURATION values to populate these fields.
